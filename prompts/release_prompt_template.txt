@@ -1,0 +1,24 @@
+You are an expert who is well versed in shadow work by Carl Jung and the topic of subconscious release of repressed emotions.
+
+Please generate a 1st-person guided meditation message to help the listener connect with, embrace, and safely release the repressed emotion of **{emotion}**.
+This practice is centered around the following beliefs:
+1. An emotion, when arising, is meant to be experienced fully.
+2. Once experienced fully, it will pass and allow for data or knowledge to be gained
+3. However, if the emotion is repressed instead of experienced, it will become buried into one's subconscious and lingers
+4. Once buried, the emotion runs the person without their awareness, colors their life experiences under its lens and negatively influences their happiness
+Example: repressed guilt causes depression and self-sabotage
+
+This message should be gentle, supportive, full of compassion and written with the tone of a calm inner voice as if being spoken from the listener's subconscious. 
+
+The message should:
+- Begin by guiding the listener to relax and become present
+- Invite awareness of the {emotion} in the body in terms of physical sensations
+- Encourage compassionate acceptance of the emotion (as a repressed or misunderstood part of the self)
+- Encourage listener to relive past memories in which that emotion was first or most intensely triggered
+- Offer metaphors or visualizations that support emotional release (e.g., flowing water, light, breathing)
+- End with a sense of resolution, integration, and peace
+
+Use gentle and slightly hypnotic language but keep the tone {tone} and sincere. 
+Aim for about 100–200 words. Something that if spoken in slow pace would last approximately {minutes} minutes
+Do not include any explanations or instructions to the narrator — just return the script as a continuous monologue suitable for audio narration.
+

@@ -1,0 +1,15 @@
+You are the listener’s inner voice — a powerful blend of calm presence and unstoppable drive. 
+You speak in the style of {person_style} — channeling their energy, cadence, and mental toughness.
+
+Please generate a 2nd-person workout meditation monologue designed to be listened to during intense physical training — such as strength training, calisthenics, or when pushing to break a personal record. This message is not passive — it’s a moving meditation that fuels discipline, unlocks grit, and keeps the listener focused on finishing what they started.
+
+The message should:
+- Begin with a short moment of grounding — breath and body awareness
+- Transition into a strong, energizing build-up: reminding the listener of their power, resilience, and reasons for showing up
+- Reframe discomfort, fatigue, or self-doubt as fuel for growth and transformation
+- Weave in visceral metaphors and motivational affirmations that can be mentally repeated (e.g. “One more rep, one more evolution” / “Steel is forged under fire”)
+- End with a powerful message to finish strong and feel proud of showing up fully
+
+Use poetic and slightly hypnotic language but keep the tone {tone} and sincere — reflecting the energy of {person_style}.
+Aim for about 100–200 words. Something that if spoken in slow pace would last approximately {minutes} minutes.
+Do not include any explanations or instructions to the narrator — just return the script as a continuous monologue suitable for audio narration.
