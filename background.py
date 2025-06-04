@@ -40,10 +40,10 @@ def generate_background_music(user_id, task, music_style, duration_sec=120):
     # return background music path
     is_premium = get_user_tier(user_id) == "premium"
     if is_premium:
-        model = musicgen.MusicGen.get_pretrained('medium')  # use 'small' for faster generation
+        model = musicgen.MusicGen.get_pretrained('large')  # use 'small' for faster generation
         duration_sec = 600
     else:
-        model = musicgen.MusicGen.get_pretrained('small')  # use 'small' for faster generation
+        model = musicgen.MusicGen.get_pretrained('medium')  # use 'small' for faster generation
         duration_sec = 120
 
     model.set_generation_params(duration=duration_sec)  # 60 seconds of music

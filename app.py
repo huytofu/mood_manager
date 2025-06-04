@@ -3,23 +3,53 @@
 
 from TTS.api import TTS
 from fastapi import FastAPI, HTTPException
-from meditation_utils import get_user_emotion_embedding, get_meditation_text
-from user_utils import get_user_tier, get_user_voice_path
+from fastapi_mcp import FastApiMCP
+from meditation_utils import generate_meditation_audio
+from user_utils import get_user_voice_path
 from background import generate_background_music, generate_brainwave, combine_audio
 from cache_manager import cache_manager
 
-app = FastAPI()
-
 # 1. Load the pre-trained multi-speaker TTS model
 MODEL_NAME = "tts_models/multilingual/multi-dataset/your_tts"
-tts = TTS(model_name=MODEL_NAME, progress_bar=False, gpu=True)
+tts_model = TTS(model_name=MODEL_NAME, progress_bar=False, gpu=True)
 
-@app.post("/cache_user_voice")
+app = FastAPI()
+mcp = FastApiMCP(
+    app,
+    name="mood_management_mc",
+    description="Mood Management Microservice",
+    version="1.0.0",
+    exclude_operations=["cleanup_expired_cache"],
+    include_operations=[
+        "cache_user_voice", 
+        "get_cache_status", 
+        "clear_user_cache", 
+        "generate_release_meditation_audio", 
+        "generate_sleep_meditation_audio", 
+        "generate_mindfulness_meditation_audio", 
+        "generate_workout_meditation_audio"
+    ],
+    describe_all_responses=True,
+    describe_full_response_schema=True,
+)
+mcp.mount()
+
+# CACHE MANAGEMENT ENDPOINTS
+@app.post("/cache_user_voice", 
+        operation_id="cache_user_voice", 
+        description='''
+        Generate and cache speaker embedding for a user.
+        Args:
+            user_id: str
+        Returns:
+            a dictionary with properties `status`, `message`, and `cache_backend`
+        ''',
+        response_description="a dictionary with properties `status`, `message`, and `cache_backend` if successful, or an error message if not")
 async def cache_user_voice(user_id: str):
     """Generate and cache speaker embedding for a user."""
     try:
         user_voice_path = get_user_voice_path(user_id)
-        speaker_embedding = tts.get_speaker_embedding(user_voice_path)
+        speaker_embedding = tts_model.get_speaker_embedding(user_voice_path)
         
         success = cache_manager.set_speaker_embedding(user_id, speaker_embedding)
         if not success:
@@ -34,7 +64,16 @@ async def cache_user_voice(user_id: str):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to cache speaker embedding: {str(e)}")
 
-@app.get("/cache_status/{user_id}")
+@app.get("/cache_status/{user_id}", 
+        operation_id="get_cache_status", 
+        description='''
+        Check cache status for a user with system info.
+        Args:
+            user_id: str
+        Returns:
+            a dictionary with properties `user_id`, `cached`, `message`, and cached information
+        ''',
+        response_description="a dictionary with properties `user_id`, `cached`, `message`, and cached information if successful, or an error message if not")
 async def get_cache_status(user_id: str):
     """Check cache status for a user with system info."""
     exists = cache_manager.exists_speaker_embedding(user_id)
@@ -47,7 +86,16 @@ async def get_cache_status(user_id: str):
         **cache_info
     }
 
-@app.delete("/clear_user_cache/{user_id}")
+@app.delete("/clear_user_cache/{user_id}",
+        operation_id="clear_user_cache",
+        description='''
+        Clear cached speaker embedding for a user.
+        Args:
+            user_id: str
+        Returns:
+            a dictionary with properties `status`, `message`
+        ''',
+        response_description="a dictionary with properties `status`, `message` if successful, or an error message if not")
 async def clear_user_cache(user_id: str):
     """Clear cached speaker embedding for a user."""
     deleted = cache_manager.delete_speaker_embedding(user_id)
@@ -56,7 +104,16 @@ async def clear_user_cache(user_id: str):
         "message": f"Speaker embedding {'cleared' if deleted else 'not found'} for user {user_id}"
     }
 
-@app.post("/cleanup_cache")
+@app.post("/cleanup_cache",
+        operation_id="cleanup_expired_cache",
+        description='''
+        Manually cleanup expired cache entries (MongoDB only).
+        Args:
+            None
+        Returns:
+            a dictionary with properties `status`, `message`
+        ''',
+        response_description="a dictionary with properties `status`, `message` if successful, or an error message if not")
 async def cleanup_expired_cache():
     """Manually cleanup expired cache entries (MongoDB only)."""
     cleaned = cache_manager.cleanup_expired()
@@ -65,46 +122,34 @@ async def cleanup_expired_cache():
         "cleaned_entries": cleaned,
         "message": f"Cleaned up {cleaned} expired entries"
     }
-
-def generate_meditation_audio(user_id: str, task: str, selected_emotion: str, selected_tone: str, min_length: int, background_options: dict):
-    # 1. Get cached speaker embedding
-    speaker_embedding = cache_manager.get_cached_speaker_embedding(user_id)
-
-    # 2. Load pre-defined emotion embedding (these should be precomputed & saved as .npy files)
-    emotion_embedding = get_user_emotion_embedding(selected_tone)
-    is_premium = get_user_tier(user_id) == "premium"
-    if task == "release":
-        if selected_tone in [None, "None", "none"]:
-            selected_tone = "passionate"
-        text = get_meditation_text("release", selected_emotion, selected_tone, min_length, is_premium)
-    elif task == "sleep":
-        text = get_meditation_text("sleep", selected_emotion, selected_tone, min_length, is_premium)
-    elif task == "mindfulness":
-        text = get_meditation_text("mindfulness", selected_emotion, selected_tone, min_length, is_premium)
-    elif task == "workout":
-        if selected_tone in [None, "None", "none"]:
-            selected_tone = "energetic"
-        text = get_meditation_text("workout", selected_emotion, selected_tone, min_length, is_premium)
-
-    emotion_embedding = get_user_emotion_embedding(selected_tone)
     
-    # 4. Generate the emotional, speaker-cloned audio
-    output_path = f"output_{task}_meditation_{user_id}.wav"
-    tts.tts_to_file(
-        text=text,
-        speaker_embedding=speaker_embedding,
-        style_wav=None,  # Optional: could be an emotional style reference instead of embedding
-        emotion_embedding=emotion_embedding,  # Only works if the model supports it
-        file_path=output_path
-    )
-
-    return output_path
-    
-
-@app.post("/generate_release_meditation_audio")
+# AUDIO GENERATION ENDPOINTS
+@app.post("/generate_release_meditation_audio",
+        operation_id="generate_release_meditation_audio",
+        description='''
+        Generate a release meditation audio.
+        Args:
+            user_id: str
+            selected_emotion: str (user-selected emotion for release)
+            selected_tone: str (user-selected tone for message)
+            min_length: int (minimum length of the audio in minutes)
+            background_options: dict (options for background music and brain waves - should have 5 keys. Example:
+                {
+                    "should_generate_background_music": True,
+                    "music_style": "classical",
+                    "should_generate_brain_waves": True,
+                    "brain_waves_type": "theta",
+                    "volume_magnitude": "high"
+                }
+            )
+        Returns:
+            a dictionary with properties `status`, `output_audio_path`
+        ''',
+        response_description="a dictionary with properties `status`, `output_audio_path` if successful, or an error message if not")
 async def generate_release_meditation_audio(user_id: str, selected_emotion: str, selected_tone: str, min_length: int, background_options: dict):
+    """Generate a release meditation audio."""
     # Generate the emotional, speaker-cloned audio
-    output_path = generate_meditation_audio(user_id, "release", selected_emotion, selected_tone, min_length, background_options)
+    output_path = generate_meditation_audio(user_id, tts_model, "release", selected_emotion, selected_tone, min_length, background_options)
 
     background_music_path = None
     brain_waves_path = None
@@ -125,12 +170,32 @@ async def generate_release_meditation_audio(user_id: str, selected_emotion: str,
     # 6. Combine the emotional, speaker-cloned audio with the background music and brain waves
     combined_audio_path = combine_audio(output_path, background_music_path, brain_waves_path)
 
-    return {"status": "success", "audio_path": combined_audio_path}
+    return {"status": "success", "output_audio_path": combined_audio_path}
 
-@app.post("/generate_sleep_meditation_audio")
+@app.post("/generate_sleep_meditation_audio",
+        operation_id="generate_sleep_meditation_audio",
+        description='''
+        Generate a sleep meditation audio.
+        Args:
+            user_id: str
+            min_length: int (minimum length of the audio in minutes)
+            background_options: dict (options for background music and brain waves - should have 5 keys. Example:
+                {
+                    "should_generate_background_music": True,
+                    "music_style": "classical",
+                    "should_generate_brain_waves": True,
+                    "brain_waves_type": "theta",
+                    "volume_magnitude": "low"
+                }
+            )
+        Returns:
+            a dictionary with properties `status`, `output_audio_path`
+        ''',
+        response_description="a dictionary with properties `status`, `output_audio_path` if successful, or an error message if not")
 async def generate_sleep_meditation_audio(user_id: str, min_length: int, background_options: dict):
+    """Generate a sleep meditation audio."""
     # Generate the emotional, speaker-cloned audio
-    output_path = generate_meditation_audio(user_id, "sleep", None, "calm", min_length, background_options)
+    output_path = generate_meditation_audio(user_id, tts_model, "sleep", None, "calm", min_length, background_options)
 
     background_music_path = None
     brain_waves_path = None
@@ -150,12 +215,32 @@ async def generate_sleep_meditation_audio(user_id: str, min_length: int, backgro
     # 6. Combine the emotional, speaker-cloned audio with the background music and brain waves
     combined_audio_path = combine_audio(output_path, background_music_path, brain_waves_path)
 
-    return {"status": "success", "audio_path": combined_audio_path}
+    return {"status": "success", "output_audio_path": combined_audio_path}
 
-@app.post("/generate_mindfulness_meditation_audio")
+@app.post("/generate_mindfulness_meditation_audio",
+        operation_id="generate_mindfulness_meditation_audio",
+        description='''
+        Generate a mindfulness meditation audio.
+        Args:
+            user_id: str
+            min_length: int (minimum length of the audio in minutes)
+            background_options: dict (options for background music and brain waves - should have 5 keys. Example:
+                {
+                    "should_generate_background_music": True,
+                    "music_style": "classical",
+                    "should_generate_brain_waves": True,
+                    "brain_waves_type": "alpha",
+                    "volume_magnitude": "low"
+                }
+            )
+        Returns:
+            a dictionary with properties `status`, `output_audio_path`
+        ''',
+        response_description="a dictionary with properties `status`, `output_audio_path` if successful, or an error message if not")
 async def generate_mindfulness_meditation_audio(user_id: str, min_length: int, background_options: dict):
+    """Generate a mindfulness meditation audio."""
     # Generate the emotional, speaker-cloned audio
-    output_path = generate_meditation_audio(user_id, "mindfulness", None, "calm", min_length, background_options)
+    output_path = generate_meditation_audio(user_id, tts_model, "mindfulness", None, "calm", min_length, background_options)
 
     background_music_path = None
     brain_waves_path = None
@@ -175,12 +260,33 @@ async def generate_mindfulness_meditation_audio(user_id: str, min_length: int, b
     # 6. Combine the emotional, speaker-cloned audio with the background music and brain waves
     combined_audio_path = combine_audio(output_path, background_music_path, brain_waves_path)
 
-    return {"status": "success", "audio_path": combined_audio_path}
+    return {"status": "success", "output_audio_path": combined_audio_path}
 
-@app.post("/generate_workout_meditation_audio")
+@app.post("/generate_workout_meditation_audio",
+        operation_id="generate_workout_meditation_audio",
+        description='''
+        Generate a workout meditation audio.
+        Args:
+            user_id: str
+            selected_tone: str (user-selected tone for message)
+            min_length: int (minimum length of the audio in minutes)
+            background_options: dict (options for background music and brain waves - should have 5 keys. Example:
+                {
+                    "should_generate_background_music": True,
+                    "music_style": "classical",
+                    "should_generate_brain_waves": True,
+                    "brain_waves_type": "beta",
+                    "volume_magnitude": "high"
+                }
+            )
+        Returns:
+            a dictionary with properties `status`, `output_audio_path`
+        ''',
+        response_description="a dictionary with properties `status`, `output_audio_path` if successful, or an error message if not")
 async def generate_workout_meditation_audio(user_id: str, selected_tone: str, min_length: int, background_options: dict, **kwargs):
+    """Generate a workout meditation audio."""
     # Generate the emotional, speaker-cloned audio
-    output_path = generate_meditation_audio(user_id, "workout", None, selected_tone, min_length, background_options)
+    output_path = generate_meditation_audio(user_id, tts_model, "workout", None, selected_tone, min_length, background_options)
 
     background_music_path = None
     brain_waves_path = None
@@ -200,5 +306,5 @@ async def generate_workout_meditation_audio(user_id: str, selected_tone: str, mi
     # 6. Combine the emotional, speaker-cloned audio with the background music and brain waves
     combined_audio_path = combine_audio(output_path, background_music_path, brain_waves_path)
 
-    return {"status": "success", "audio_path": combined_audio_path}
+    return {"status": "success", "output_audio_path": combined_audio_path}
 

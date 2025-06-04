@@ -1,6 +1,8 @@
 import numpy as np
 from huggingface_hub import InferenceClient
 from pymongo import MongoClient
+from cache_manager import cache_manager
+from user_utils import get_user_tier
 
 with open("prompts/release_prompt_template.txt", "r") as file:
     release_prompt_template = file.read()
@@ -97,3 +99,37 @@ def get_ai_meditation_text(emotion, tone, task: str, min_length: int, **kwargs):
         return response.choices[0].message.content
     else:
         return None
+
+def generate_meditation_audio(user_id: str, tts_model, task: str, selected_emotion: str, selected_tone: str, min_length: int, background_options: dict):
+    # 1. Get cached speaker embedding
+    speaker_embedding = cache_manager.get_cached_speaker_embedding(user_id)
+
+    # 2. Load pre-defined emotion embedding (these should be precomputed & saved as .npy files)
+    emotion_embedding = get_user_emotion_embedding(selected_tone)
+    is_premium = get_user_tier(user_id) == "premium"
+    if task == "release":
+        if selected_tone in [None, "None", "none"]:
+            selected_tone = "passionate"
+        text = get_meditation_text("release", selected_emotion, selected_tone, min_length, is_premium)
+    elif task == "sleep":
+        text = get_meditation_text("sleep", selected_emotion, selected_tone, min_length, is_premium)
+    elif task == "mindfulness":
+        text = get_meditation_text("mindfulness", selected_emotion, selected_tone, min_length, is_premium)
+    elif task == "workout":
+        if selected_tone in [None, "None", "none"]:
+            selected_tone = "energetic"
+        text = get_meditation_text("workout", selected_emotion, selected_tone, min_length, is_premium)
+
+    emotion_embedding = get_user_emotion_embedding(selected_tone)
+    
+    # 4. Generate the emotional, speaker-cloned audio
+    output_path = f"output_{task}_meditation_{user_id}.wav"
+    tts_model.tts_to_file(
+        text=text,
+        speaker_embedding=speaker_embedding,
+        style_wav=None,  # Optional: could be an emotional style reference instead of embedding
+        emotion_embedding=emotion_embedding,  # Only works if the model supports it
+        file_path=output_path
+    )
+
+    return output_path
