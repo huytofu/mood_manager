@@ -2,7 +2,7 @@ import numpy as np
 import uuid
 from huggingface_hub import InferenceClient
 from pymongo import MongoClient
-from cache_manager import cache_manager
+from cache.cache_manager import cache_manager
 from user_utils import get_user_tier
 from mongo_audio_manager import mongo_audio_manager
 

@@ -1,7 +1,7 @@
 import os
 from typing import Optional, Any
-from cache.redis_cache import RedisCache
-from cache.mongo_cache import MongoCache
+from redis_cache import RedisCache
+from mongo_cache import MongoCache
 from fastapi import HTTPException
 
 class CacheManager:
