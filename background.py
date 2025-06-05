@@ -1,11 +1,57 @@
 import numpy as np
 import random
+import uuid
+import os
 from user_utils import get_user_tier
 from pydub import AudioSegment
 from audiocraft.models import musicgen
 from audiocraft.data.audio import audio_write
+from mongo_audio_manager import mongo_audio_manager
+
+def get_user_to_brainwave_audio_path_link_in_database(user_id, wave_type, volume_magnitude):
+    """Check if brainwave audio exists in MongoDB for this user and properties."""
+    doc = mongo_audio_manager.get_brainwave_audio(user_id, wave_type, volume_magnitude)
+    if doc and doc.get("file_exists", False):
+        return "success", doc["audio_path"]
+    else:
+        return "error", "No audio path found"
+
+def create_user_to_brainwave_audio_path_link_in_database(user_id, uuid_id, wave_type, volume_magnitude, audio_path):
+    """Create brainwave audio record in MongoDB."""
+    success = mongo_audio_manager.store_brainwave_audio(user_id, uuid_id, wave_type, volume_magnitude, audio_path)
+    if success:
+        return "success", "Brainwave audio stored in MongoDB"
+    else:
+        return "error", "Failed to store brainwave audio in MongoDB"
+
+def create_user_to_background_music_audio_path_link_in_database(user_id, uuid_id, task, audio_path, music_style=None):
+    """Create background music audio record in MongoDB."""
+    success = mongo_audio_manager.store_music_audio(user_id, uuid_id, task, audio_path, music_style)
+    if success:
+        return "success", "Background music audio stored in MongoDB"
+    else:
+        return "error", "Failed to store background music audio in MongoDB"
+
+def create_user_to_final_meditation_mix_audio_path_link_in_database(user_id, uuid_id, task, emotional_audio_path, background_music_path, brain_waves_path, output_path):
+    """Create final meditation mix audio record in MongoDB."""
+    components = {
+        "emotional_audio_path": emotional_audio_path,
+        "background_music_path": background_music_path,
+        "brain_waves_path": brain_waves_path
+    }
+    
+    success = mongo_audio_manager.store_final_audio(user_id, uuid_id, task, output_path, components)
+    if success:
+        return "success", "Final meditation mix audio stored in MongoDB"
+    else:
+        return "error", "Failed to store final meditation mix audio in MongoDB"
 
 def generate_brainwave(user_id, wave_type, volume_magnitude: str = "low", duration_sec=120, sample_rate=44100):
+    # check if brainwave audio path exists in database for this user and wave type and volume magnitude
+    status, audio_path = get_user_to_brainwave_audio_path_link_in_database(user_id, wave_type, volume_magnitude)
+    if status == "success":
+        return audio_path
+    
     wave_frequencies = {
         "alpha": 8.0,
         "beta": 12.0,
@@ -32,12 +78,20 @@ def generate_brainwave(user_id, wave_type, volume_magnitude: str = "low", durati
     audio = np.int16(wave * 32767)
     segment = AudioSegment(audio.tobytes(), frame_rate=sample_rate, sample_width=2, channels=1)
     final_segment = segment + volume
-    final_segment.export(f"brainwave_{user_id}.wav", format="wav")
-    return f"brainwave_{user_id}.wav"
+
+    if not os.path.exists(f"assets/{user_id}"):
+        os.makedirs(f"assets/{user_id}")
+
+    uuid_id = str(uuid.uuid4())[:8]
+    output_path = f"assets/{user_id}/brainwave_{wave_type}_{volume_magnitude}_{uuid_id}.wav"
+    final_segment.export(output_path, format="wav")
+    
+    _, __ = create_user_to_brainwave_audio_path_link_in_database(user_id, uuid_id, wave_type, volume_magnitude, output_path)
+
+    return output_path
 
 def generate_background_music(user_id, task, music_style, duration_sec=120):
-    # generate background music
-    # return background music path
+    """Generate background music and store metadata in MongoDB."""
     is_premium = get_user_tier(user_id) == "premium"
     if is_premium:
         model = musicgen.MusicGen.get_pretrained('large')  # use 'small' for faster generation
@@ -87,13 +141,19 @@ def generate_background_music(user_id, task, music_style, duration_sec=120):
     prompt = f"calm ambient meditation instrumental music with pads and a mix of {', '.join(instruments)} in the style of {music_style}"
     wav = model.generate([prompt])  # returns list of np arrays
 
-    audio_write(f"background_music_{user_id}", wav[0].cpu(), model.sample_rate, strategy="loudness")
+    if not os.path.exists(f"assets/{user_id}"):
+        os.makedirs(f"assets/{user_id}")
 
-    return f"background_music_{user_id}.wav"
+    uuid_id = str(uuid.uuid4())[:8]
+    output_path = f"assets/{user_id}/background_music_{task}_{uuid_id}.wav"
+    audio_write(output_path, wav[0].cpu(), model.sample_rate, strategy="loudness")
 
-def combine_audio(user_id, emotional_audio_path, background_music_path, brain_waves_path):
-    # combine emotional audio, background music, and brain waves
-    # return combined audio path
+    _, __ = create_user_to_background_music_audio_path_link_in_database(user_id, uuid_id, task, output_path, music_style)
+    
+    return output_path
+
+def combine_audio(user_id, task, emotional_audio_path, background_music_path, brain_waves_path):
+    """Combine audio components and create session record."""
     # Load all components
     voice = AudioSegment.from_wav(emotional_audio_path)
     music = AudioSegment.from_wav(background_music_path)
@@ -118,7 +178,24 @@ def combine_audio(user_id, emotional_audio_path, background_music_path, brain_wa
     # Overlay voice at the beginning
     final_mix = background.overlay(voice, position=0)
 
-    # Export final result
-    final_mix.export(f"final_meditation_mix_{user_id}.wav", format="wav")
+    if not os.path.exists(f"assets/{user_id}"):
+        os.makedirs(f"assets/{user_id}")
 
-    return f"final_meditation_{user_id}.wav"
+    uuid_id = str(uuid.uuid4())[:8]
+    output_path = f"assets/{user_id}/final_meditation_mix_{task}_{uuid_id}.wav"
+    final_mix.export(output_path, format="wav")
+
+    # Store final audio metadata
+    _, __ = create_user_to_final_meditation_mix_audio_path_link_in_database(user_id, uuid_id, task, emotional_audio_path, background_music_path, brain_waves_path, output_path)
+    
+    # Create session record
+    session_id = str(uuid.uuid4())
+    mongo_audio_manager.create_session(user_id, session_id, uuid_id, task, {
+        "components": {
+            "emotional_audio_path": emotional_audio_path,
+            "background_music_path": background_music_path,
+            "brain_waves_path": brain_waves_path
+        }
+    })
+
+    return output_path
