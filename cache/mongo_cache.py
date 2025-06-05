@@ -12,7 +12,7 @@ class MongoCache:
         self._connect()
     
     def _connect(self):
-        """Establish MongoDB connection."""
+        """Establish MongoDB connection and initialize collections."""
         try:
             connection_string = os.getenv("MONGO_CONNECTION_STRING", "mongodb://localhost:27017/")
             database_name = os.getenv("MONGO_DATABASE", "meditation_app")
@@ -21,16 +21,46 @@ class MongoCache:
             db = self.client[database_name]
             self.collection = db["speaker_embeddings"]
             
-            # Test connection and create indexes
+            # Test connection
             self.client.admin.command('ismaster')
-            self.collection.create_index("user_id", unique=True)
-            self.collection.create_index("expires_at", expireAfterSeconds=0)
+            
+            # Create indexes for better performance
+            self._create_indexes()
             
             self.connected = True
-            print("✅ Connected to MongoDB successfully")
+            print("✅ Connected to MongoDB Cache successfully")
         except Exception as e:
-            print(f"❌ Failed to connect to MongoDB: {e}")
+            print(f"❌ Failed to connect to MongoDB Cache: {e}")
             self.connected = False
+    
+    def _create_indexes(self):
+        """Create indexes for efficient querying if they don't already exist."""
+        try:
+            # Helper function to safely create index
+            def safe_create_index(collection, index_spec, **kwargs):
+                try:
+                    existing_indexes = collection.list_indexes()
+                    existing_names = [idx["name"] for idx in existing_indexes]
+                    
+                    # Generate expected index name
+                    if isinstance(index_spec, str):
+                        expected_name = f"{index_spec}_1"
+                    else:
+                        expected_name = "_".join([f"{field}_{direction}" for field, direction in index_spec])
+                    
+                    if expected_name in existing_names:
+                        return
+                    
+                    collection.create_index(index_spec, **kwargs)
+                except Exception as e:
+                    print(f"Warning: Could not create index {index_spec}: {e}")
+            
+            # Speaker embeddings indexes
+            safe_create_index(self.collection, "user_id", unique=True)
+            safe_create_index(self.collection, "expires_at", expireAfterSeconds=0)
+            
+        except Exception as e:
+            print(f"Warning: Error during index creation: {e}")
     
     def is_connected(self) -> bool:
         return self.connected and self.client is not None

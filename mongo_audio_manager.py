@@ -16,45 +16,97 @@ import os
 
 class MongoAudioManager:
     def __init__(self, connection_string: str = "mongodb://localhost:27017/"):
-        self.client = MongoClient(connection_string)
-        self.db = self.client["meditation_app"]
+        self.connection_string = connection_string
+        self.client = None
+        self.db = None
+        self.brainwave_audios = None
+        self.music_audios = None
+        self.message_audios = None
+        self.final_audios = None
+        self.sessions = None
+        self.connected = False
         
-        # 5 main collections for audio metadata
-        self.brainwave_audios = self.db["brainwave_audios"]
-        self.music_audios = self.db["music_audios"]
-        self.message_audios = self.db["message_audios"]
-        self.final_audios = self.db["final_audios"]
-        self.sessions = self.db["sessions"]
-        
-        # Create indexes for better performance
-        self._create_indexes()
+        self._connect()
+    
+    def _connect(self):
+        """Establish MongoDB connection and initialize collections."""
+        try:
+            self.client = MongoClient(self.connection_string)
+            self.db = self.client["meditation_app"]
+            
+            # Test connection
+            self.client.admin.command('ismaster')
+            
+            # Initialize collections
+            self.brainwave_audios = self.db["brainwave_audios"]
+            self.music_audios = self.db["music_audios"]
+            self.message_audios = self.db["message_audios"]
+            self.final_audios = self.db["final_audios"]
+            self.sessions = self.db["sessions"]
+            
+            # Create indexes for better performance
+            self._create_indexes()
+            
+            self.connected = True
+            print("✅ Connected to MongoDB Audio Manager successfully")
+        except Exception as e:
+            print(f"❌ Failed to connect to MongoDB Audio Manager: {e}")
+            self.connected = False
+    
+    def is_connected(self) -> bool:
+        return self.connected and self.client is not None
     
     def _create_indexes(self):
-        """Create indexes for efficient querying."""
-        # Brainwave audios indexes
-        self.brainwave_audios.create_index([("user_id", 1), ("wave_type", 1), ("volume_magnitude", 1)])
-        self.brainwave_audios.create_index("created_at")
-        
-        # Music audios indexes
-        self.music_audios.create_index([("user_id", 1), ("task", 1)])
-        self.music_audios.create_index("created_at")
-        
-        # Message audios indexes
-        self.message_audios.create_index([("user_id", 1)])
-        self.message_audios.create_index("created_at")
-        
-        # Final audios indexes
-        self.final_audios.create_index([("user_id", 1), ("task", 1)])
-        self.final_audios.create_index("created_at")
-        
-        # Sessions indexes
-        self.sessions.create_index([("user_id", 1)])
-        self.sessions.create_index("created_at")
+        """Create indexes for efficient querying if they don't already exist."""
+        try:
+            # Helper function to safely create index
+            def safe_create_index(collection, index_spec, index_name=None):
+                try:
+                    existing_indexes = collection.list_indexes()
+                    existing_names = [idx["name"] for idx in existing_indexes]
+                    
+                    if index_name and index_name in existing_names:
+                        return
+                    
+                    if isinstance(index_spec, list):
+                        # Compound index
+                        collection.create_index(index_spec)
+                    else:
+                        # Single field index
+                        collection.create_index(index_spec)
+                except Exception as e:
+                    print(f"Warning: Could not create index {index_spec}: {e}")
+            
+            # Brainwave audios indexes
+            safe_create_index(self.brainwave_audios, [("user_id", 1), ("wave_type", 1), ("volume_magnitude", 1)])
+            safe_create_index(self.brainwave_audios, "created_at")
+            
+            # Music audios indexes
+            safe_create_index(self.music_audios, [("user_id", 1), ("task", 1)])
+            safe_create_index(self.music_audios, "created_at")
+            
+            # Message audios indexes
+            safe_create_index(self.message_audios, [("user_id", 1)])
+            safe_create_index(self.message_audios, "created_at")
+            
+            # Final audios indexes
+            safe_create_index(self.final_audios, [("user_id", 1), ("task", 1)])
+            safe_create_index(self.final_audios, "created_at")
+            
+            # Sessions indexes
+            safe_create_index(self.sessions, [("user_id", 1)])
+            safe_create_index(self.sessions, "created_at")
+            
+        except Exception as e:
+            print(f"Warning: Error during index creation: {e}")
     
     # BRAINWAVE AUDIOS COLLECTION
     def store_brainwave_audio(self, user_id: str, uuid_id: str, wave_type: str, 
                              volume_magnitude: str, audio_path: str) -> bool:
         """Store brainwave audio metadata."""
+        if not self.is_connected():
+            return False
+        
         document = {
             "uuid_id": uuid_id,
             "user_id": user_id,
@@ -75,6 +127,9 @@ class MongoAudioManager:
     def get_brainwave_audio(self, user_id: str, wave_type: str, 
                            volume_magnitude: str) -> Optional[Dict]:
         """Get brainwave audio by user and properties."""
+        if not self.is_connected():
+            return None
+        
         return self.brainwave_audios.find_one({
             "user_id": user_id,
             "wave_type": wave_type,
