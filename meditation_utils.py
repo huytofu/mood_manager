@@ -1,8 +1,10 @@
 import numpy as np
+import uuid
 from huggingface_hub import InferenceClient
 from pymongo import MongoClient
 from cache_manager import cache_manager
 from user_utils import get_user_tier
+from mongo_audio_manager import mongo_audio_manager
 
 with open("prompts/release_prompt_template.txt", "r") as file:
     release_prompt_template = file.read()
@@ -100,7 +102,7 @@ def get_ai_meditation_text(emotion, tone, task: str, min_length: int, **kwargs):
     else:
         return None
 
-def generate_meditation_audio(user_id: str, tts_model, task: str, selected_emotion: str, selected_tone: str, min_length: int, background_options: dict):
+def generate_meditation_audio(user_id: str, tts_model, task: str, selected_emotion: str, selected_tone: str, min_length: int):
     # 1. Get cached speaker embedding
     speaker_embedding = cache_manager.get_cached_speaker_embedding(user_id)
 
@@ -123,7 +125,8 @@ def generate_meditation_audio(user_id: str, tts_model, task: str, selected_emoti
     emotion_embedding = get_user_emotion_embedding(selected_tone)
     
     # 4. Generate the emotional, speaker-cloned audio
-    output_path = f"output_{task}_meditation_{user_id}.wav"
+    output_uuid = str(uuid.uuid4())
+    output_path = f"assets/{user_id}/output_{task}_meditation_{output_uuid}.wav"
     tts_model.tts_to_file(
         text=text,
         speaker_embedding=speaker_embedding,
@@ -131,5 +134,6 @@ def generate_meditation_audio(user_id: str, tts_model, task: str, selected_emoti
         emotion_embedding=emotion_embedding,  # Only works if the model supports it
         file_path=output_path
     )
+    _, __ = mongo_audio_manager.store_message_audio(user_id, output_uuid, task, min_length, selected_tone, selected_emotion, output_path)
 
-    return output_path
+    return output_path, output_uuid

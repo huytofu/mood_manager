@@ -62,7 +62,7 @@ class MongoAudioManager:
             "volume_magnitude": volume_magnitude,
             "audio_path": audio_path,
             "file_exists": os.path.exists(audio_path),
-            "created_at": datetime.utcnow()
+            "created_at": datetime.now(datetime.UTC)
         }
         
         try:
@@ -83,7 +83,7 @@ class MongoAudioManager:
     
     # MUSIC AUDIOS COLLECTION
     def store_music_audio(self, user_id: str, uuid_id: str, task: str, 
-                         audio_path: str, music_style: str = None) -> bool:
+                         music_style: str, audio_path: str) -> bool:
         """Store background music audio metadata."""
         document = {
             "uuid_id": uuid_id,
@@ -92,7 +92,7 @@ class MongoAudioManager:
             "music_style": music_style,
             "audio_path": audio_path,
             "file_exists": os.path.exists(audio_path),
-            "created_at": datetime.utcnow()
+            "created_at": datetime.now(datetime.UTC)
         }
         
         try:
@@ -110,17 +110,19 @@ class MongoAudioManager:
         )
     
     # MESSAGE AUDIOS COLLECTION
-    def store_message_audio(self, user_id: str, uuid_id: str, audio_path: str,
-                           message_type: str = None, duration_sec: float = None) -> bool:
+    def store_message_audio(self, user_id: str, uuid_id: str, task: str, duration_sec: float, 
+                           selected_tone: str, selected_emotion: str, audio_path: str) -> bool:
         """Store voice message audio metadata."""
         document = {
             "uuid_id": uuid_id,
             "user_id": user_id,
-            "message_type": message_type,
-            "audio_path": audio_path,
+            "task": task,
             "duration_sec": duration_sec,
+            "selected_tone": selected_tone,
+            "selected_emotion": selected_emotion or None,
+            "audio_path": audio_path,
             "file_exists": os.path.exists(audio_path),
-            "created_at": datetime.utcnow()
+            "created_at": datetime.now(datetime.UTC)
         }
         
         try:
@@ -136,7 +138,7 @@ class MongoAudioManager:
     
     # FINAL AUDIOS COLLECTION
     def store_final_audio(self, user_id: str, uuid_id: str, task: str, 
-                         output_path: str, components: Dict) -> bool:
+                        components: Dict, audio_path: str) -> bool:
         """
         Store final mixed audio with component references.
         components should contain: message_audio_id, music_audio_id, brainwave_audio_id
@@ -145,7 +147,6 @@ class MongoAudioManager:
             "uuid_id": uuid_id,
             "user_id": user_id,
             "task": task,
-            "output_path": output_path,
             "components": {
                 "message_audio_id": components.get("message_audio_id"),
                 "music_audio_id": components.get("music_audio_id"),
@@ -156,8 +157,9 @@ class MongoAudioManager:
                 "background_music_path": components.get("background_music_path"),
                 "brain_waves_path": components.get("brain_waves_path")
             },
-            "file_exists": os.path.exists(output_path),
-            "created_at": datetime.utcnow()
+            "audio_path": audio_path,
+            "file_exists": os.path.exists(audio_path),
+            "created_at": datetime.now(datetime.UTC)
         }
         
         try:
@@ -173,15 +175,16 @@ class MongoAudioManager:
     
     # SESSIONS COLLECTION
     def create_session(self, user_id: str, session_id: str, final_audio_id: str,
-                      task: str, metadata: Dict = None) -> bool:
+                      task: str, session_type: str, schedule_id: str) -> bool:
         """Create a user session linking to final audio."""
         document = {
             "session_id": session_id,
             "user_id": user_id,
-            "final_audio_id": final_audio_id,
             "task": task,
-            "metadata": metadata or {},
-            "created_at": datetime.utcnow()
+            "session_type": session_type,
+            "final_audio_id": final_audio_id,
+            "schedule_id": schedule_id,
+            "created_at": datetime.now(datetime.UTC)
         }
         
         try:
@@ -204,7 +207,7 @@ class MongoAudioManager:
     # CLEANUP METHODS
     def cleanup_old_files(self, days_old: int = 30):
         """Clean up old audio files and metadata."""
-        cutoff_date = datetime.utcnow() - timedelta(days=days_old)
+        cutoff_date = datetime.now(datetime.UTC) - timedelta(days=days_old)
         
         collections = [
             self.brainwave_audios,
