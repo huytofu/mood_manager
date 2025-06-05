@@ -3,7 +3,7 @@ import uuid
 from huggingface_hub import InferenceClient
 from pymongo import MongoClient
 from cache.cache_manager import cache_manager
-from user_utils import get_user_tier
+from mongo_user_manager import mongo_user_manager
 from mongo_audio_manager import mongo_audio_manager
 
 with open("prompts/release_prompt_template.txt", "r") as file:
@@ -108,7 +108,7 @@ def generate_meditation_audio(user_id: str, tts_model, task: str, selected_emoti
 
     # 2. Load pre-defined emotion embedding (these should be precomputed & saved as .npy files)
     emotion_embedding = get_user_emotion_embedding(selected_tone)
-    is_premium = get_user_tier(user_id) == "premium"
+    is_premium = mongo_user_manager.get_user_tier(user_id) == "premium"
     if task == "release":
         if selected_tone in [None, "None", "none"]:
             selected_tone = "passionate"

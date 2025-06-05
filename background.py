@@ -2,18 +2,11 @@ import numpy as np
 import random
 import uuid
 import os
-from user_utils import get_user_tier
+from mongo_user_manager import mongo_user_manager
 from pydub import AudioSegment
 from audiocraft.models import musicgen
 from audiocraft.data.audio import audio_write
 from mongo_audio_manager import mongo_audio_manager
-
-
-
-
-
-
-
 
 
 def generate_brainwave(user_id, wave_type, volume_magnitude: str = "low", duration_sec=120, sample_rate=44100):
@@ -36,7 +29,7 @@ def generate_brainwave(user_id, wave_type, volume_magnitude: str = "low", durati
     }
     frequency = wave_frequencies.get(wave_type)
     volume = volume_magnitudes.get(volume_magnitude)
-    is_premium = get_user_tier(user_id) == "premium"
+    is_premium = mongo_user_manager.get_user_tier(user_id) == "premium"
     if is_premium:
         duration_sec = 600
     else:
@@ -62,7 +55,7 @@ def generate_brainwave(user_id, wave_type, volume_magnitude: str = "low", durati
 
 def generate_background_music(user_id, task, music_style, duration_sec=120):
     """Generate background music and store metadata in MongoDB."""
-    is_premium = get_user_tier(user_id) == "premium"
+    is_premium = mongo_user_manager.get_user_tier(user_id) == "premium"
     if is_premium:
         model = musicgen.MusicGen.get_pretrained('large')  # use 'small' for faster generation
         duration_sec = 600

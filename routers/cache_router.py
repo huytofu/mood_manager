@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException, Depends
 from cache.cache_manager import cache_manager
-from user_utils import get_user_voice_path
+from mongo_user_manager import mongo_user_manager
 from dependencies import get_tts_model
 
 router = APIRouter(tags=["cache"])
@@ -18,7 +18,7 @@ router = APIRouter(tags=["cache"])
 async def cache_user_voice(user_id: str, tts_model=Depends(get_tts_model)):
     """Generate and cache speaker embedding for a user."""
     try:
-        user_voice_path = get_user_voice_path(user_id)
+        user_voice_path = mongo_user_manager.get_user_voice_path(user_id)
         speaker_embedding = tts_model.get_speaker_embedding(user_voice_path)
         
         success = cache_manager.set_speaker_embedding(user_id, speaker_embedding)
