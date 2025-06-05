@@ -5,11 +5,12 @@ from fastapi import FastAPI
 from fastapi_mcp import FastApiMCP
 from routers.cache_router import router as cache_router
 from routers.audio_router import router as audio_router
+from mood_manager_brain import brain_router
 
 app = FastAPI()
 mcp = FastApiMCP(
     app,
-    name="mood_management_mc",
+    name="mood_management_mcp_fastapi",
     description="Mood Management Microservice",
     version="1.0.0",
     exclude_operations=["cleanup_expired_cache"],
@@ -20,7 +21,10 @@ mcp = FastApiMCP(
         "generate_release_meditation_audio", 
         "generate_sleep_meditation_audio", 
         "generate_mindfulness_meditation_audio", 
-        "generate_workout_meditation_audio"
+        "generate_workout_meditation_audio",
+        "process_mood_request",
+        "get_brain_capabilities",
+        "analyze_emotion_only"
     ],
     describe_all_responses=True,
     describe_full_response_schema=True,
@@ -30,4 +34,5 @@ mcp.mount()
 # Include routers
 app.include_router(cache_router)
 app.include_router(audio_router)
+app.include_router(brain_router)
 

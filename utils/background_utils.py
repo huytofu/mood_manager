@@ -2,11 +2,11 @@ import numpy as np
 import random
 import uuid
 import os
-from mongo_user_manager import mongo_user_manager
+from database.mongo_user_manager import mongo_user_manager
 from pydub import AudioSegment
 from audiocraft.models import musicgen
 from audiocraft.data.audio import audio_write
-from mongo_audio_manager import mongo_audio_manager
+from database.mongo_audio_manager import mongo_audio_manager
 
 
 def generate_brainwave(user_id, wave_type, volume_magnitude: str = "low", duration_sec=120, sample_rate=44100):
@@ -94,6 +94,11 @@ def generate_background_music(user_id, task, music_style, duration_sec=120):
             2: "violin",
             3: "cello",
             4: "harp"
+        }
+    elif task == "crisis":
+        instrument_choices = {
+            1: "piano",
+            2: "harp"
         }
 
     instruments = []

@@ -3,8 +3,8 @@ import uuid
 from huggingface_hub import InferenceClient
 from pymongo import MongoClient
 from cache.cache_manager import cache_manager
-from mongo_user_manager import mongo_user_manager
-from mongo_audio_manager import mongo_audio_manager
+from database.mongo_user_manager import mongo_user_manager
+from database.mongo_audio_manager import mongo_audio_manager
 
 with open("prompts/release_prompt_template.txt", "r") as file:
     release_prompt_template = file.read()
@@ -121,6 +121,12 @@ def generate_meditation_audio(user_id: str, tts_model, task: str, selected_emoti
         if selected_tone in [None, "None", "none"]:
             selected_tone = "energetic"
         text = get_meditation_text("workout", selected_emotion, selected_tone, min_length, is_premium)
+    elif task == "crisis":
+        if selected_tone in [None, "None", "none"]:
+            selected_tone = "compassionate"
+        text = get_meditation_text("crisis", selected_emotion, selected_tone, min_length, is_premium)
+    else:
+        text = "I love you 3000"
 
     emotion_embedding = get_user_emotion_embedding(selected_tone)
     
