@@ -115,11 +115,11 @@ def plan_intervention(intent: str, context: Dict[str, Any], user_data: Dict[str,
     
     intervention["voice_caching"] = True
         
-    # Plan follow-up actions
+    # Plan follow-up actions  
     if emotional_analysis.get("is_crisis", False):
-        intervention["follow_up_actions"] = ["schedule_check_in", "track_mood"]
+        intervention["follow_up_actions"] = ["Schedule check-in within 1 hour", "Track mood progress", "Keep emergency contacts accessible"]
     else:
-        intervention["follow_up_actions"] = ["optional_feedback"]
+        intervention["follow_up_actions"] = ["Provide optional feedback on intervention effectiveness"]
         
     return intervention
 
@@ -309,7 +309,7 @@ async def call_cache_endpoint(endpoint: str, params: Dict[str, Any]) -> Dict[str
         return {"success": False, "error": str(e), "endpoint": endpoint, "method": "direct_call"}
 
 @tool("generate_recommendations", args_schema=RecommendationsInput)
-def generate_recommendations(request: Dict[str, Any], results: Optional[Dict[str, Any]] = None) -> Dict[str, List[str]]:
+def generate_recommendations(request: Dict[str, Any], results: Optional[Dict[str, Any]] = None) -> List[str]:
     """
     Tool Purpose: Generate evidence-based immediate and follow-up recommendations based on user's emotional state and intervention results.
     
@@ -318,7 +318,7 @@ def generate_recommendations(request: Dict[str, Any], results: Optional[Dict[str
     - results (Optional[Dict[str, Any]]): Intervention results including audio generation outcomes (optional)
     
     Returns:
-    - Dict containing: immediate_actions (List[str]) and follow_up_actions (List[str]) with specific recommendations
+    - List[str]: All recommendations (immediate actions and follow-up actions combined) as a flat list
     """
     # Extract emotional analysis from user_data
     user_data = request.get("user_data", {})
@@ -328,55 +328,65 @@ def generate_recommendations(request: Dict[str, Any], results: Optional[Dict[str
     primary_emotion = emotion_analysis.get("primary_emotion", "stress")
     intensity = emotion_analysis.get("intensity", user_crisis_level / 10.0 if user_crisis_level else 0.5)
     
-    recommendations = {"immediate_actions": [], "follow_up_actions": []}
+    all_recommendations = []
     
     # Immediate actions based on emotional state
     if primary_emotion in ["anxiety", "fear"]:
-        recommendations["immediate_actions"].extend([
+        all_recommendations.extend([
             "Practice deep breathing exercises (4-7-8 technique)",
-            "Try progressive muscle relaxation", "Use grounding techniques (5-4-3-2-1 method)",
+            "Try progressive muscle relaxation",
+            "Use grounding techniques (5-4-3-2-1 method)",
             "Focus on present moment awareness"
         ])
     elif primary_emotion in ["stress", "overwhelmed"]:
-        recommendations["immediate_actions"].extend([
-            "Take 5-10 minute breaks from current activity", "Try gentle stretching or movement",
-            "Practice mindful breathing", "Write down 3 things causing stress"
+        all_recommendations.extend([
+            "Take 5-10 minute breaks from current activity",
+            "Try gentle stretching or movement",
+            "Practice mindful breathing",
+            "Write down 3 things causing stress"
         ])
     elif primary_emotion in ["sadness", "grief"]:
-        recommendations["immediate_actions"].extend([
-            "Allow yourself to feel the emotion without judgment", "Practice self-compassion meditation",
-            "Reach out to a trusted friend or family member", "Engage in gentle, nurturing activities"
+        all_recommendations.extend([
+            "Allow yourself to feel the emotion without judgment",
+            "Practice self-compassion meditation",
+            "Reach out to a trusted friend or family member",
+            "Engage in gentle, nurturing activities"
         ])
     elif primary_emotion in ["anger", "frustration"]:
-        recommendations["immediate_actions"].extend([
-            "Take slow, deep breaths to calm your nervous system", "Count to 10 before responding to triggers",
-            "Try physical release (walking, stretching)", "Practice the STOP technique (Stop, Take a breath, Observe, Proceed)"
+        all_recommendations.extend([
+            "Take slow, deep breaths to calm your nervous system",
+            "Count to 10 before responding to triggers",
+            "Try physical release (walking, stretching)",
+            "Practice the STOP technique (Stop, Take a breath, Observe, Proceed)"
         ])
     
     # High intensity actions
     if intensity > 0.7:
-        recommendations["immediate_actions"].extend([
+        all_recommendations.extend([
             "Consider speaking with a mental health professional",
-            "Use crisis resources if needed", "Prioritize self-care and rest"
+            "Use crisis resources if needed",
+            "Prioritize self-care and rest"
         ])
     
     # Follow-up actions
-    recommendations["follow_up_actions"].append("Track mood progress in journal")
+    all_recommendations.append("Track mood progress in journal")
     if intensity > 0.6:
-        recommendations["follow_up_actions"].extend([
-            "Schedule daily check-in with yourself", "Repeat today's meditation session tomorrow",
+        all_recommendations.extend([
+            "Schedule daily check-in with yourself",
+            "Repeat today's meditation session tomorrow",
             "Consider establishing regular mindfulness practice"
         ])
     else:
-        recommendations["follow_up_actions"].extend([
-            "Optional weekly mood check-in", "Continue building emotional awareness skills"
+        all_recommendations.extend([
+            "Optional weekly mood check-in",
+            "Continue building emotional awareness skills"
         ])
     
     # Add follow-ups based on intervention results
     if results and results.get("audio"):
-        recommendations["follow_up_actions"].append("Save audio session for future use")
+        all_recommendations.append("Save audio session for future use")
         
-    return recommendations
+    return all_recommendations
 
 @tool("handle_crisis", args_schema=CrisisHandlingInput)
 async def handle_crisis(request: Dict[str, Any]) -> Dict[str, Any]:
@@ -387,27 +397,32 @@ async def handle_crisis(request: Dict[str, Any]) -> Dict[str, Any]:
     - request (Dict[str, Any]): MoodManagerRequest data containing user_id, context, and user_data with emotional analysis
     
     Returns:
-    - Dict containing: immediate_resources (List[str]), audio (Dict), follow_up_scheduled (bool), 
-      crisis_protocol_activated (bool), emergency_contacts (List[str])
+    - Dict containing: audio (Dict), crisis_protocol_activated (bool), 
+      recommendations (List[str]) with immediate resources and follow-up actions
     """
     # Prepare crisis meditation audio
     audio_params = prepare_audio_params(request, "crisis_meditation")
     audio_result = await call_audio_endpoint("crisis_meditation", audio_params)
     
+    # Generate comprehensive crisis recommendations
+    crisis_recommendations = [
+        "Call National Suicide Prevention Lifeline: 988 immediately",
+        "Text HOME to 741741 for Crisis Text Line support",
+        "Contact Emergency Services: 911 if in immediate danger",
+        "Reach out to a trusted friend, family member, or mental health professional",
+        "Remove any means of self-harm from immediate environment",
+        "Stay with someone or go to a safe public place",
+        "Use the crisis meditation audio provided",
+        "Schedule follow-up appointment with mental health professional within 24 hours",
+        "Contact SAMHSA National Helpline: 1-800-662-4357 for ongoing support",
+        "Check in with crisis counselor within 1 hour",
+        "Keep emergency contact numbers easily accessible"
+    ]
+    
     crisis_response = {
-        "immediate_resources": [
-            "National Suicide Prevention Lifeline: 988",
-            "Crisis Text Line: Text HOME to 741741",
-            "Emergency Services: 911"
-        ],
         "audio": audio_result,
-        "follow_up_scheduled": True,
         "crisis_protocol_activated": True,
-        "emergency_contacts": [
-            "National Suicide Prevention Lifeline: 988",
-            "Crisis Text Line: 741741",
-            "SAMHSA National Helpline: 1-800-662-4357"
-        ]
+        "recommendations": crisis_recommendations
     }
     
     return crisis_response

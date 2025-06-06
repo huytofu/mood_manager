@@ -34,7 +34,6 @@ except ImportError:
 
 # Import tools and prompts from separate files
 from .mood_manager_tools import (
-    analyze_emotional_state,
     plan_intervention, 
     prepare_audio_params,
     call_audio_endpoint,
@@ -42,7 +41,7 @@ from .mood_manager_tools import (
     generate_recommendations,
     handle_crisis
 )
-from .mood_manager_prompts import MOOD_MANAGER_SYSTEM_PROMPT, get_user_prompt_template
+from .mood_manager_prompts import MOOD_MANAGER_SYSTEM_PROMPT, get_user_prompt_template, get_react_format_reminder
 
 # =============================================================================
 # MANAGER REQUEST/RESPONSE FORMATS
@@ -79,7 +78,6 @@ class MoodManagerResponse(BaseModel):
     """Standardized response format for mood management"""
     success: bool = Field(..., description="Whether the request was processed successfully")
     audio: Optional[Dict[str, Any]] = Field(default=None, description="Audio file metadata with fields like is_created, audio_id, task_type, file_path, etc.") 
-    schedule: Optional[Dict[str, Any]] = Field(default=None, description="Schedule metadata with fields like is_created, schedule_id, task_type, file_path, etc.")
     metadata: Dict[str, Any] = Field(..., description="Processing metadata and diagnostics")
     recommendations: Optional[List[str]] = Field(default=None, description="Suggested follow-up actions")
 
@@ -330,7 +328,7 @@ class MoodManagerBrain:
         }
         
         try:
-            # Execute tools in standard mood management sequence
+            # Execute tools in standard mood management sequence following React pattern
             # 1. Plan intervention (emotional analysis comes from Master Manager via user_data)
             intervention_plan = plan_intervention(
                 intent=request.intent,
@@ -340,7 +338,7 @@ class MoodManagerBrain:
             results["intervention_plan"] = intervention_plan
             results["tools_used"].append("plan_intervention")
             results["steps"].append({
-                "thought": "Planning therapeutic intervention based on Master Manager's analysis",
+                "thought": "I need to plan therapeutic intervention based on Master Manager's analysis and user data",
                 "action": "plan_intervention", 
                 "input": {"intent": request.intent, "context": request.context, "user_data": request.user_data},
                 "observation": intervention_plan
@@ -353,7 +351,7 @@ class MoodManagerBrain:
                 results["intervention_type"] = "crisis"
                 results["tools_used"].append("handle_crisis")
                 results["steps"].append({
-                    "thought": "Crisis detected, activating emergency protocols",
+                    "thought": "Crisis detected in intervention plan. I must activate emergency protocols immediately.",
                     "action": "handle_crisis",
                     "input": {"request": request.dict()},
                     "observation": crisis_response
@@ -366,7 +364,7 @@ class MoodManagerBrain:
                 )
                 results["tools_used"].append("prepare_audio_params")
                 results["steps"].append({
-                    "thought": "Preparing audio parameters for intervention",
+                    "thought": f"No crisis detected. I need to prepare audio parameters for {intervention_plan.get('audio_type')} intervention.",
                     "action": "prepare_audio_params",
                     "input": {"request": request.dict(), "audio_type": intervention_plan.get("audio_type")},
                     "observation": audio_params
@@ -380,7 +378,7 @@ class MoodManagerBrain:
                 results["audio"] = audio_result
                 results["tools_used"].append("call_audio_endpoint")
                 results["steps"].append({
-                    "thought": "Generating therapeutic audio",
+                    "thought": "Now I will generate the therapeutic audio using the prepared parameters.",
                     "action": "call_audio_endpoint",
                     "input": {"audio_type": intervention_plan.get("audio_type"), "params": audio_params},
                     "observation": audio_result
@@ -394,9 +392,9 @@ class MoodManagerBrain:
             results["recommendations"] = recommendations
             results["tools_used"].append("generate_recommendations")
             results["steps"].append({
-                "thought": "Generating personalized recommendations",
+                "thought": "Finally, I need to generate personalized recommendations to help the user with immediate and follow-up actions.",
                 "action": "generate_recommendations",
-                "input": {"request": request.dict()},
+                "input": {"request": request.dict(), "results": results.get("audio", None)},
                 "observation": recommendations
             })
             
@@ -423,16 +421,20 @@ class MoodManagerBrain:
         LLM-powered processing using available tools
         """
         try:
-            # Create the prompt for the LLM using the template
+            # Create the prompt for the LLM using the updated template with React pattern
             user_prompt = get_user_prompt_template(
                 user_id=request.user_id,
                 intent=request.intent,
                 context=request.context,
+                user_data=request.user_data,
                 priority=request.priority
             )
             
+            # Add React format reminder for consistent formatting
+            full_prompt = user_prompt + get_react_format_reminder()
+            
             # Get LLM response with tool usage
-            llm_response = await self._call_llm_with_tools(user_prompt, request)
+            llm_response = await self._call_llm_with_tools(full_prompt, request)
             
             # Parse the LLM response and extract results
             return await self._synthesize_response(request, llm_response, {})
@@ -441,7 +443,6 @@ class MoodManagerBrain:
             return MoodManagerResponse(
                 success=False,
                 audio={"is_created": False, "file_path": None},
-                schedule={"is_created": False, "file_path": None},
                 metadata={"is_error": True, "error_type": "llm_brain_error", "intervention_type": None, "processing_method": "llm_powered"},
                 recommendations=["retry_request", "contact_support"]
             )
@@ -458,7 +459,6 @@ class MoodManagerBrain:
                 return MoodManagerResponse(
                     success=True,
                     audio=llm_response.get("audio", {"is_created": False, "file_path": None}),
-                    schedule=llm_response.get("schedule", {"is_created": False, "file_path": None}),
                     metadata={
                         "is_error": False,
                         "error_type": None,
@@ -478,7 +478,6 @@ class MoodManagerBrain:
                 return MoodManagerResponse(
                     success=False,
                     audio={"is_created": False, "file_path": None},
-                    schedule={"is_created": False, "file_path": None},
                     metadata={
                         "is_error": True,
                         "error_type": llm_results.get("error_type", "llm_execution_error"),
@@ -492,13 +491,11 @@ class MoodManagerBrain:
             # Handle standard intervention response
             else:
                 audio = llm_results.get("audio", {"is_created": False, "file_path": None})
-                schedule = llm_results.get("schedule", {"is_created": False, "file_path": None})
                 recommendations = llm_results.get("recommendations", ["retry_request", "contact_support"])
                 
                 return MoodManagerResponse(
                     success=True,
                     audio=audio,
-                    schedule=schedule,
                     metadata={
                         "is_error": False,
                         "error_type": None,
@@ -513,7 +510,6 @@ class MoodManagerBrain:
             return MoodManagerResponse(
                 success=False,
                 audio={"is_created": False, "file_path": None},
-                schedule={"is_created": False, "file_path": None},
                 metadata={
                     "is_error": True,
                     "error_type": "response_synthesis_error",

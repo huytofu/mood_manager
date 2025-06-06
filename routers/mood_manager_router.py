@@ -29,8 +29,7 @@ async def process_mood_request(request: MoodManagerRequest) -> MoodManagerRespon
     1. Plan appropriate intervention  
     2. Execute intervention using existing tools
     3. Generate a meditation audio if necessary
-    4. Generate a schedule for the audio if necessary
-    5. Generate comprehensive response with recommendations and follow-ups for the user
+    4. Generate comprehensive response with recommendations (immediate and follow-ups) for the user
     """
     return await mood_brain._process_request(request)
 
@@ -65,7 +64,7 @@ async def get_brain_capabilities():
                     "user_crisis_level": 8,
                     "user_text_input": "I am feeling anxious about my presentation tomorrow. Please help me to relax."
                 },
-                "output": "Personalized release meditation with passionate tone targeting specific emotion (supported emotions: guilt, fear, grief, anger, desire). An optional schedule for the audio is also generated."
+                "output": "Personalized release meditation with passionate tone targeting specific emotion (supported emotions: guilt, fear, grief, anger, desire)"
             },
             {
                 "name": "Self-Belief & Esteem Enhancement", 
@@ -76,7 +75,7 @@ async def get_brain_capabilities():
                     "user_crisis_level": 8,
                     "user_text_input": "I don't believe in myself. Sometimes I feel worthless. I need confidence."
                 },
-                "output": "Sleep meditation with calm tone and theta brain waves for subconscious reinforcement. An optional schedule for the audio is also generated."
+                "output": "Sleep meditation with calm tone and theta brain waves for subconscious reinforcement."
             },
             {
                 "name": "Workout Motivation",
@@ -87,7 +86,7 @@ async def get_brain_capabilities():
                     "user_crisis_level": 8,
                     "user_text_input": "I need energy for my workout. I feel lazy to exercise. Motivate me!"
                 },
-                "output": "Energetic workout meditation with beta brain waves and high volume. An optional schedule for the audio is also generated."
+                "output": "Energetic workout meditation with beta brain waves and high volume."
             },
             {
                 "name": "Mindfulness & Present Moment",
@@ -98,7 +97,7 @@ async def get_brain_capabilities():
                     "user_crisis_level": 8,
                     "user_text_input": "My mind is scattered. I'm always distracted."
                 },
-                "output": "Mindfulness meditation with calm tone and alpha brain waves. An optional schedule for the audio is also generated."
+                "output": "Mindfulness meditation with calm tone and alpha brain waves."
             },
             {
                 "name": "Crisis & Stress Management",
@@ -109,7 +108,7 @@ async def get_brain_capabilities():
                     "user_crisis_level": 8,
                     "user_text_input": "I'm having a panic attack. I can't cope anymore. I feel suicidal."
                 },
-                "output": "Crisis meditation with compassionate tone, alpha brain waves, plus emergency resources. An optional schedule for the audio is also generated."
+                "output": "Crisis meditation with compassionate tone, alpha brain waves, plus emergency resources."
             }
         ],
         
@@ -117,9 +116,8 @@ async def get_brain_capabilities():
         "intervention_flow": {
             "1. Intervention Planning": "Customized plan based on detected emotion and user context",
             "2. Audio Generation": "Personalized therapeutic audio with AI voice, background music, brain waves",
-            "3. Schedule Generation": "Schedule for the audio",
-            "4. Recommendation Engine": "Evidence-based immediate and follow-up action suggestions",
-            "5. Crisis Protocols": "Specialized handling for mental health emergencies"
+            "3. Recommendation Engine": "Evidence-based immediate and follow-up action suggestions",
+            "4. Crisis Protocols": "Specialized handling for mental health emergencies"
         },
         
         # Audio personalization features
@@ -149,7 +147,7 @@ async def get_brain_capabilities():
             "input_schema_endpoint": "/brain/schema/request",
             "output_schema_endpoint": "/brain/schema/response",
             "example_usage": "Send user's emotional state assesment and user details (including message), receive personalized audio + recommendations",
-            "response_format": "Structured intervention with audio file, schedule for the audio, action plans and recommendations"
+            "response_format": "Structured intervention with audio file and recommendations (immediate and follow-ups actions)"
         }
     }
 
@@ -284,7 +282,6 @@ async def get_response_schema():
         "example": {
             "success": True,
             "audio": {"is_created": True, "file_path": "path/to/audio.mp3"},
-            "schedule": {"is_created": True, "file_path": "path/to/schedule.json"},
             "metadata": {
                 "is_error": False,
                 "error_type": None,
