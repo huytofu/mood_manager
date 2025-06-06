@@ -7,7 +7,7 @@ from typing import Dict, Any
 # =============================================================================
 
 # Create the brain instance with auto-detection of available agent types
-mood_brain = MoodManagerBrain(agent_type="auto")
+mood_brain = MoodManagerBrain(agent_type="smolagents")
 
 # Create router for brain endpoints
 brain_router = APIRouter(prefix="/brain", tags=["mood-brain"])

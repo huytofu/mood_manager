@@ -15,6 +15,7 @@ The integration approach:
 from typing import List, Dict, Any, Optional
 from pydantic import BaseModel, Field
 from huggingface_hub import InferenceClient
+import os
 
 # Option 1: LangChain React Agent
 try:
@@ -103,7 +104,10 @@ class MoodManagerBrain:
             agent_type: "langchain", "smolagents", "custom", or "auto"
             hf_token: HuggingFace API token for model access
         """
-        self.hf_token = hf_token
+        if hf_token:
+            self.hf_token = hf_token
+        else:
+            self.hf_token = os.getenv("HF_TOKEN")
         
         # Available tools for the LLM to use (emotional analysis now handled by Master Manager)
         self.tools = [
@@ -202,7 +206,7 @@ class MoodManagerBrain:
         try:
             # Create model
             self.model = HfApiModel(
-                model_id="microsoft/DialoGPT-large",
+                model_id="Qwen/Qwen2.5-Coder-32B-Instruct",
                 token=self.hf_token
             )
             
