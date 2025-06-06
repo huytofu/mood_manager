@@ -5,7 +5,7 @@ from fastapi import FastAPI
 from fastapi_mcp import FastApiMCP
 from routers.cache_router import router as cache_router
 from routers.audio_router import router as audio_router
-from mood_manager_brain import brain_router
+from routers.mood_manager_router import brain_router
 
 app = FastAPI()
 mcp = FastApiMCP(

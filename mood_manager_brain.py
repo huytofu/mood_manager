@@ -12,13 +12,25 @@ The integration approach:
 4. Existing routers become the "tools" layer
 """
 
-from abc import ABC, abstractmethod
 from typing import List, Dict, Any, Optional
-from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
-from langchain_core.tools import BaseTool
 from huggingface_hub import InferenceClient
-import json
+
+# Option 1: LangChain React Agent
+try:
+    from langchain.agents import create_react_agent, AgentExecutor
+    from langchain.tools import Tool
+    from langchain.prompts import PromptTemplate
+    LANGCHAIN_AVAILABLE = True
+except ImportError:
+    LANGCHAIN_AVAILABLE = False
+
+# Option 2: HuggingFace CodeAgent  
+try:
+    from smolagents import CodeAgent, HfApiModel
+    SMOLAGENTS_AVAILABLE = True
+except ImportError:
+    SMOLAGENTS_AVAILABLE = False
 
 # Import tools and prompts from separate files
 from .mood_manager_tools import (
@@ -39,27 +51,37 @@ from .mood_manager_prompts import MOOD_MANAGER_SYSTEM_PROMPT, get_user_prompt_te
 class MoodManagerRequest(BaseModel):
     """Standardized request format for mood management"""
     user_id: str = Field(..., description="Unique identifier for the user", example="user123")
-    intent: str = Field(..., description="User's emotional state or request in natural language", 
-                       example="I'm feeling really anxious about my presentation tomorrow")
+    intent: str = Field(..., description="Request from master manager in natural language", 
+                        example="User is anxious about his presentation tomorrow. Please help to generate a meditation audio to help him.")
     context: Dict[str, Any] = Field(default_factory=dict, description="Additional context information",
-                                  example={
-                                      "time_of_day": "evening",
-                                      "stress_level": 8,
-                                      "voice_preference": "calm_female",
-                                      "background_music": True,
-                                      "brain_waves": True,
-                                      "background_music_preference": "nature"
-                                  })
+                        example={
+                            "stress_level": 8,
+                            "selected_tone": "calm",
+                            "use_user_voice": True,
+                            "should_use_background_music": True,
+                            "should_use_brain_waves": True,
+                            "music_style": "natural sounds",
+                            "duration": 10,
+                        })
+    user_data: Dict[str, Any] = Field(default_factory=dict, description="Additional user data",
+                            example={
+                            "user_name": "John Doe",
+                            "user_crisis_level": 8,
+                            "user_age": 30,
+                            "user_gender": "male",
+                            "user_text_input": "I am feeling anxious about my presentation tomorrow. Please help me to relax."
+                            })
     priority: str = Field(default="normal", description="Request priority level",
-                         enum=["low", "normal", "high", "urgent"], example="high")
+                        enum=["low", "normal", "high"], example="high")
 
+# TO REVIEW:
 class MoodManagerResponse(BaseModel):
     """Standardized response format for mood management"""
     success: bool = Field(..., description="Whether the request was processed successfully")
-    result: Any = Field(..., description="Main result data including intervention details")
+    audio: Optional[Dict[str, Any]] = Field(default=None, description="Audio file metadata with fields like is_created, audio_id, task_type, file_path, etc.") 
+    schedule: Optional[Dict[str, Any]] = Field(default=None, description="Schedule metadata with fields like is_created, schedule_id, task_type, file_path, etc.")
     metadata: Dict[str, Any] = Field(..., description="Processing metadata and diagnostics")
-    follow_up_suggestions: Optional[List[str]] = Field(default=None, description="Suggested follow-up actions")
-    emotional_assessment: Optional[Dict[str, Any]] = Field(default=None, description="Analyzed emotional state")
+    recommendations: Optional[List[str]] = Field(default=None, description="Suggested follow-up actions")
 
 # =============================================================================
 # MOOD MANAGER BRAIN
@@ -69,20 +91,24 @@ class MoodManagerBrain:
     """
     LLM-Powered Brain specialized for mood management
     
-    Uses HuggingFace InferenceClient to power intelligent decision making
-    and orchestrates specialized tools for therapeutic interventions.
+    Supports multiple agent implementations:
+    - LangChain React Agent (Option 1)
+    - HuggingFace CodeAgent (Option 2)  
+    - Custom React Agent (Fallback)
     """
     
-    def __init__(self):
-        # Initialize HuggingFace LLM client
-        self.llm_client = InferenceClient(
-            model="microsoft/DialoGPT-large",  # You can change to your preferred model
-            token=None  # Add your HF token if needed
-        )
+    def __init__(self, agent_type: str = "auto", hf_token: str = None):
+        """
+        Initialize MoodManagerBrain with specified agent type
         
-        # Available tools for the LLM to use
+        Args:
+            agent_type: "langchain", "smolagents", "custom", or "auto"
+            hf_token: HuggingFace API token for model access
+        """
+        self.hf_token = hf_token
+        
+        # Available tools for the LLM to use (emotional analysis now handled by Master Manager)
         self.tools = [
-            analyze_emotional_state,
             plan_intervention, 
             prepare_audio_params,
             call_audio_endpoint,
@@ -93,9 +119,305 @@ class MoodManagerBrain:
         
         # System prompt for the LLM (imported from prompts file)
         self.system_prompt = MOOD_MANAGER_SYSTEM_PROMPT
-        
         self.context_memory = {}
+        
+        # Determine and initialize the agent in one step
+        self.agent_type = self._determine_and_initialize_agent(agent_type)
     
+    def _determine_and_initialize_agent(self, agent_type: str) -> str:
+        """Determine which agent type to use and initialize it"""
+        # Determine agent type based on availability
+        if agent_type == "auto":
+            if LANGCHAIN_AVAILABLE:
+                selected_type = "langchain"
+            elif SMOLAGENTS_AVAILABLE:
+                selected_type = "smolagents"
+            else:
+                selected_type = "custom"
+        elif agent_type == "langchain" and not LANGCHAIN_AVAILABLE:
+            print("LangChain not available, falling back to custom implementation")
+            selected_type = "custom"
+        elif agent_type == "smolagents" and not SMOLAGENTS_AVAILABLE:
+            print("SmolagentS not available, falling back to custom implementation")
+            selected_type = "custom"
+        else:
+            selected_type = agent_type
+        
+        # Initialize the selected agent
+        print(f"Initializing {selected_type} agent...")
+        
+        if selected_type == "langchain":
+            self._init_langchain_agent()
+        elif selected_type == "smolagents":
+            self._init_smolagents_agent()
+        else:
+            self._init_custom_agent()
+        
+        return selected_type
+    
+    def _init_langchain_agent(self):
+        """Initialize LangChain React Agent"""
+        try:
+            # Create LangChain tools from our functions
+            self.langchain_tools = []
+            for tool_func in self.tools:
+                lc_tool = Tool(
+                    name=tool_func.__name__,
+                    description=tool_func.__doc__ or f"Mood management tool: {tool_func.__name__}",
+                    func=tool_func
+                )
+                self.langchain_tools.append(lc_tool)
+            
+            # Initialize LLM
+            self.llm = InferenceClient(
+                model="microsoft/DialoGPT-large",
+                token=self.hf_token,
+                model_kwargs={"temperature": 0.7, "max_length": 1500}
+            )
+            
+            # Load React prompt template
+            with open("prompts/mood_manager_prompt.txt", "r") as f:
+                template = f.read()
+            
+            self.prompt = PromptTemplate.from_template(template)
+            
+            # Create React agent
+            self.agent = create_react_agent(self.llm, self.langchain_tools, self.prompt)
+            self.agent_executor = AgentExecutor(
+                agent=self.agent, 
+                tools=self.langchain_tools, 
+                verbose=True,
+                max_iterations=10,
+                handle_parsing_errors=True
+            )
+            
+            print("✅ LangChain React Agent initialized successfully")
+            
+        except Exception as e:
+            print(f"❌ Failed to initialize LangChain agent: {e}")
+            print("Falling back to custom implementation...")
+            self.agent_type = "custom"
+            self._init_custom_agent()
+    
+    def _init_smolagents_agent(self):
+        """Initialize HuggingFace CodeAgent"""
+        try:
+            # Create model
+            self.model = HfApiModel(
+                model_id="microsoft/DialoGPT-large",
+                token=self.hf_token
+            )
+            
+            # Convert our tools to smolagents format
+            # Note: smolagents expects tools to be classes or have specific format
+            # This might need adjustment based on your tool implementations
+            
+            # Create CodeAgent  
+            self.agent = CodeAgent(
+                tools=self.tools,
+                model=self.model,
+                max_iterations=10
+            )
+            
+            print("✅ HuggingFace CodeAgent initialized successfully")
+            
+        except Exception as e:
+            print(f"❌ Failed to initialize CodeAgent: {e}")
+            print("Falling back to custom implementation...")
+            self.agent_type = "custom"
+            self._init_custom_agent()
+    
+    def _init_custom_agent(self):
+        """Initialize simplified fallback implementation"""
+        # No LLM client needed for direct tool execution
+        print("✅ Simplified fallback agent initialized successfully")
+    
+    async def _call_llm_with_tools(self, prompt: str, request: MoodManagerRequest) -> Dict[str, Any]:
+        """
+        Call LLM and execute tools based on agent type
+        """
+        # Format input for agent
+        agent_input = f"""
+        User ID: {request.user_id}
+        Intent: {request.intent}
+        Context: {request.context}
+        Priority: {request.priority}
+        
+        Please help this user with their emotional state using your available tools.
+        """
+        
+        try:
+            if self.agent_type == "langchain":
+                return await self._call_langchain_agent(agent_input, request)
+            elif self.agent_type == "smolagents":
+                return await self._call_smolagents_agent(agent_input, request)
+            else:
+                return await self._call_custom_agent(prompt, request)
+                
+        except Exception as e:
+            return {
+                "intervention_type": "error",
+                "error": f"Agent execution error: {str(e)}",
+                "llm_reasoning": f"Failed to process with {self.agent_type} agent: {str(e)}",
+                "tools_used": [],
+                "steps": []
+            }
+    
+    async def _call_langchain_agent(self, agent_input: str, request: MoodManagerRequest) -> Dict[str, Any]:
+        """Execute LangChain React Agent"""
+        try:
+            # Run the agent
+            result = await self.agent_executor.ainvoke({"input": agent_input})
+            
+            # Extract information from LangChain result
+            return {
+                "llm_reasoning": result.get("output", ""),
+                "intervention_type": "standard",
+                "tools_used": [step.tool for step in result.get("intermediate_steps", [])],
+                "steps": [
+                    {
+                        "thought": step.log,
+                        "action": step.tool,
+                        "input": step.tool_input,
+                        "observation": step.observation
+                    }
+                    for step in result.get("intermediate_steps", [])
+                ],
+                "final_result": {"intervention_completed": True, "method": "langchain"},
+                "agent_type": "langchain"
+            }
+            
+        except Exception as e:
+            print(f"LangChain agent error: {e}")
+            # Fallback to custom implementation
+            return await self._call_custom_agent("", request)
+    
+    async def _call_smolagents_agent(self, agent_input: str, request: MoodManagerRequest) -> Dict[str, Any]:
+        """Execute HuggingFace CodeAgent"""
+        try:
+            # Run the agent
+            result = self.agent.run(agent_input)
+            
+            # Extract information from smolagents result
+            return {
+                "llm_reasoning": str(result),
+                "intervention_type": "standard", 
+                "tools_used": getattr(self.agent, "tool_calls", []),
+                "steps": getattr(self.agent, "logs", []),
+                "final_result": {"intervention_completed": True, "method": "smolagents"},
+                "agent_type": "smolagents"
+            }
+            
+        except Exception as e:
+            print(f"CodeAgent error: {e}")
+            # Fallback to custom implementation  
+            return await self._call_custom_agent("", request)
+    
+    async def _call_custom_agent(self, prompt: str, request: MoodManagerRequest) -> Dict[str, Any]:
+        """Execute simplified fallback implementation using direct tool calls"""
+        print("Using simplified fallback agent (no LLM reasoning)")
+        
+        # Create tool mapping for easy access
+        tool_map = {tool.__name__: tool for tool in self.tools}
+        
+        # Initialize results storage
+        results = {
+            "steps": [],
+            "final_result": {},
+            "llm_reasoning": "Simplified fallback - direct tool execution without LLM reasoning",
+            "tools_used": [],
+            "agent_type": "custom_fallback"
+        }
+        
+        try:
+            # Execute tools in standard mood management sequence
+            # 1. Plan intervention (emotional analysis comes from Master Manager via user_data)
+            intervention_plan = plan_intervention(
+                intent=request.intent,
+                context=request.context,
+                user_data=request.user_data
+            )
+            results["intervention_plan"] = intervention_plan
+            results["tools_used"].append("plan_intervention")
+            results["steps"].append({
+                "thought": "Planning therapeutic intervention based on Master Manager's analysis",
+                "action": "plan_intervention", 
+                "input": {"intent": request.intent, "context": request.context, "user_data": request.user_data},
+                "observation": intervention_plan
+            })
+            
+            # 2. Check for crisis
+            if intervention_plan.get("crisis_protocol", False):
+                crisis_response = handle_crisis(request=request.dict())
+                results["crisis_response"] = crisis_response
+                results["intervention_type"] = "crisis"
+                results["tools_used"].append("handle_crisis")
+                results["steps"].append({
+                    "thought": "Crisis detected, activating emergency protocols",
+                    "action": "handle_crisis",
+                    "input": {"request": request.dict()},
+                    "observation": crisis_response
+                })
+            else:
+                # 3. Prepare audio parameters
+                audio_params = prepare_audio_params(
+                    request=request.dict(),
+                    audio_type=intervention_plan.get("audio_type", "mindfulness_meditation")
+                )
+                results["tools_used"].append("prepare_audio_params")
+                results["steps"].append({
+                    "thought": "Preparing audio parameters for intervention",
+                    "action": "prepare_audio_params",
+                    "input": {"request": request.dict(), "audio_type": intervention_plan.get("audio_type")},
+                    "observation": audio_params
+                })
+                
+                # 4. Generate audio
+                audio_result = call_audio_endpoint(
+                    audio_type=intervention_plan.get("audio_type", "mindfulness_meditation"),
+                    params=audio_params
+                )
+                results["audio"] = audio_result
+                results["tools_used"].append("call_audio_endpoint")
+                results["steps"].append({
+                    "thought": "Generating therapeutic audio",
+                    "action": "call_audio_endpoint",
+                    "input": {"audio_type": intervention_plan.get("audio_type"), "params": audio_params},
+                    "observation": audio_result
+                })
+            
+            # 5. Generate recommendations
+            recommendations = generate_recommendations(
+                request=request.dict(),
+                results=results.get("audio", None)
+            )
+            results["recommendations"] = recommendations
+            results["tools_used"].append("generate_recommendations")
+            results["steps"].append({
+                "thought": "Generating personalized recommendations",
+                "action": "generate_recommendations",
+                "input": {"request": request.dict()},
+                "observation": recommendations
+            })
+            
+            results["final_result"] = {
+                "intervention_completed": True, 
+                "method": "custom_fallback",
+                "total_tools_executed": len(results["tools_used"])
+            }
+            
+            return results
+            
+        except Exception as e:
+            return {
+                "intervention_type": "error",
+                "error": f"Fallback agent error: {str(e)}",
+                "llm_reasoning": f"Failed to execute fallback agent: {str(e)}",
+                "tools_used": results.get("tools_used", []),
+                "steps": results.get("steps", []),
+                "agent_type": "custom_fallback"
+            }
+
     async def _process_request(self, request: MoodManagerRequest) -> MoodManagerResponse:
         """
         LLM-powered processing using available tools
@@ -118,391 +440,86 @@ class MoodManagerBrain:
         except Exception as e:
             return MoodManagerResponse(
                 success=False,
-                result={"error": str(e)},
-                metadata={"error_type": "llm_brain_error", "processing_method": "llm_powered"},
-                follow_up_suggestions=["retry_request", "contact_support"]
+                audio={"is_created": False, "file_path": None},
+                schedule={"is_created": False, "file_path": None},
+                metadata={"is_error": True, "error_type": "llm_brain_error", "intervention_type": None, "processing_method": "llm_powered"},
+                recommendations=["retry_request", "contact_support"]
             )
     
-    async def _call_llm_with_tools(self, prompt: str, request: MoodManagerRequest) -> Dict[str, Any]:
-        """
-        Call LLM and execute tools based on its decisions
-        """
-        try:
-            # For now, we'll simulate LLM tool calling by following the standard process
-            # In a full implementation, you'd use a proper tool-calling LLM
-            
-            # Step 1: Analyze emotional state
-            emotional_analysis = analyze_emotional_state(
-                intent=request.intent,
-                context=request.context
-            )
-            
-            # Step 2: Check for crisis
-            if emotional_analysis.get("crisis_level", 0) > 0.7:
-                crisis_response = await handle_crisis(
-                    request=request.dict(),
-                    emotional_analysis=emotional_analysis
-                )
-                return {
-                    "intervention_type": "crisis",
-                    "emotional_analysis": emotional_analysis,
-                    "crisis_response": crisis_response,
-                    "llm_reasoning": "Crisis detected - activating emergency protocols"
-                }
-            
-            # Step 3: Plan intervention
-            intervention_plan = plan_intervention(
-                intent=request.intent,
-                context={"emotion_analysis": emotional_analysis, **request.context}
-            )
-            
-            # Step 4: Prepare and generate audio
-            audio_type = intervention_plan.get("audio_type")
-            audio_result = None
-            if audio_type:
-                audio_params = prepare_audio_params(
-                    request=request.dict(),
-                    emotional_analysis=emotional_analysis,
-                    audio_type=audio_type
-                )
-                audio_result = await call_audio_endpoint(
-                    audio_type=audio_type,
-                    params=audio_params
-                )
-            
-            # Step 5: Generate recommendations
-            recommendations = generate_recommendations(
-                emotion_analysis=emotional_analysis,
-                results={"audio": audio_result} if audio_result else None
-            )
-            
-            return {
-                "intervention_type": "standard",
-                "emotional_analysis": emotional_analysis,
-                "intervention_plan": intervention_plan,
-                "audio": audio_result,
-                "recommendations": recommendations,
-                "llm_reasoning": f"Detected {emotional_analysis.get('primary_emotion')} with intensity {emotional_analysis.get('intensity')} - generated {audio_type} with personalized recommendations"
-            }
-            
-        except Exception as e:
-            return {
-                "error": str(e),
-                "intervention_type": "error",
-                "llm_reasoning": "Failed to process request with tools"
-            } 
-
-    async def _synthesize_response(self, request: MoodManagerRequest, llm_results: Dict, 
-                                 emotional_analysis: Dict) -> MoodManagerResponse:
+    async def _synthesize_response(self, request: MoodManagerRequest, llm_results: Dict) -> MoodManagerResponse:
         """
         Synthesize final response from LLM tool usage results
         """
         try:
             # Handle crisis response
-            if llm_results.get("intervention_type") == "crisis":
-                crisis_response = llm_results.get("crisis_response", {})
+            intervention_type = llm_results.get("intervention_type", "standard")
+            if intervention_type == "crisis":
+                llm_response = llm_results.get("response", {})
                 return MoodManagerResponse(
                     success=True,
-                    result=crisis_response,
+                    audio=llm_response.get("audio", {"is_created": False, "file_path": None}),
+                    schedule=llm_response.get("schedule", {"is_created": False, "file_path": None}),
                     metadata={
-                        "intervention_type": "crisis",
-                        "priority": "urgent",
-                        "llm_reasoning": llm_results.get("llm_reasoning"),
+                        "is_error": False,
+                        "error_type": None,
+                        "intervention_type": intervention_type,
+                        "priority": request.priority,
                         "processing_method": "llm_powered"
                     },
-                    follow_up_suggestions=[
+                    recommendations=llm_response.get("recommendations", [
                         "seek_professional_help",
                         "contact_emergency_services_if_needed", 
                         "check_in_1_hour"
-                    ],
-                    emotional_assessment=llm_results.get("emotional_analysis")
+                    ])
                 )
             
             # Handle error response
             elif llm_results.get("intervention_type") == "error":
                 return MoodManagerResponse(
                     success=False,
-                    result={"error": llm_results.get("error")},
+                    audio={"is_created": False, "file_path": None},
+                    schedule={"is_created": False, "file_path": None},
                     metadata={
-                        "error_type": "tool_execution_error",
-                        "llm_reasoning": llm_results.get("llm_reasoning"),
+                        "is_error": True,
+                        "error_type": llm_results.get("error_type", "llm_execution_error"),
+                        "intervention_type": intervention_type,
+                        "priority": request.priority,
                         "processing_method": "llm_powered"
                     },
-                    follow_up_suggestions=["retry_request", "contact_support"]
+                    recommendations=llm_results.get("recommendations", ["retry_request", "contact_support"])
                 )
             
             # Handle standard intervention response
             else:
-                emotional_analysis = llm_results.get("emotional_analysis", {})
-                audio = llm_results.get("audio", {})
-                recommendations = llm_results.get("recommendations", {"immediate_actions": [], "follow_up_actions": []})
+                audio = llm_results.get("audio", {"is_created": False, "file_path": None})
+                schedule = llm_results.get("schedule", {"is_created": False, "file_path": None})
+                recommendations = llm_results.get("recommendations", ["retry_request", "contact_support"])
                 
                 return MoodManagerResponse(
                     success=True,
-                    result={
-                        "intervention_completed": True,
-                        "audio_generated": audio.get("success", False),
-                        "audio": audio,
-                        "personalized_recommendations": recommendations
-                    },
+                    audio=audio,
+                    schedule=schedule,
                     metadata={
-                        "intervention_type": "standard",
-                        "processing_method": "llm_powered",
-                        "llm_reasoning": llm_results.get("llm_reasoning"),
-                        "tools_used": ["analyze_emotional_state", "plan_intervention", "prepare_audio_params", "call_audio_endpoint", "generate_recommendations"]
+                        "is_error": False,
+                        "error_type": None,
+                        "intervention_type": intervention_type,
+                        "priority": request.priority,
+                        "processing_method": "llm_powered"
                     },
-                    follow_up_suggestions=recommendations.get("follow_up_actions", []),
-                    emotional_assessment=emotional_analysis
+                    recommendations=recommendations
                 )
                 
         except Exception as e:
             return MoodManagerResponse(
                 success=False,
-                result={"error": str(e)},
-                metadata={"error_type": "response_synthesis_error", "processing_method": "llm_powered"},
-                follow_up_suggestions=["retry_request"]
+                audio={"is_created": False, "file_path": None},
+                schedule={"is_created": False, "file_path": None},
+                metadata={
+                    "is_error": True,
+                    "error_type": "response_synthesis_error",
+                    "intervention_type": intervention_type,
+                    "priority": request.priority,
+                    "processing_method": "llm_powered"
+                },
+                recommendations=["retry_request", "contact_support"]
             )
-        
-# =============================================================================
-# BRAIN ROUTER INTEGRATION
-# =============================================================================
-
-# Create the brain instance
-mood_brain = MoodManagerBrain()
-
-# Create router for brain endpoints
-brain_router = APIRouter(prefix="/brain", tags=["mood-brain"])
-
-@brain_router.post("/process", response_model=MoodManagerResponse,
-                   operation_id="process_mood_request",
-                   description='''Main endpoint for intelligent mood management
-                   Args:
-                   - request: MoodManagerRequest object
-                   Returns:
-                   - MoodManagerResponse object
-                   ''',
-                   )
-async def process_mood_request(request: MoodManagerRequest) -> MoodManagerResponse:
-    """
-    Main endpoint for intelligent mood management
-    
-    This endpoint uses the mood brain to:
-    1. Analyze emotional state
-    2. Plan appropriate intervention  
-    3. Execute intervention using existing tools
-    4. Provide comprehensive response with follow-ups
-    """
-    return await mood_brain._process_request(request)
-
-@brain_router.get("/capabilities",
-                  operation_id="get_brain_capabilities",
-                  description='''Get mood manager brain capabilities
-                  Args:
-                  - None
-                  Returns:
-                  - Dictionary containing brain capabilities
-                  ''',
-                  response_description='''Dictionary containing brain capabilities
-                  ''',
-                  response_model=Dict[str, Any],
-                  tags=["mood-brain"]
-                )
-async def get_brain_capabilities():
-    """Get mood manager brain capabilities - what it can DO, not how it does it"""
-    return {
-        "manager": "Mood Manager",
-        "version": "1.0",
-        "description": "AI-powered emotional support and therapeutic audio generation specialist",
-        
-        # Core therapeutic interventions the mood manager can perform
-        "core_interventions": [
-            {
-                "name": "Suppressed Emotion Release",
-                "description": "Detect suppressed emotions from user inputs and generate release meditation audio",
-                "trigger_examples": ["I feel angry but can't express it", "I'm holding back tears", "I feel numb"],
-                "output": "Personalized release meditation with passionate tone targeting specific emotion (guilt, fear, grief, anger, desire)"
-            },
-            {
-                "name": "Self-Belief & Esteem Enhancement", 
-                "description": "Detect intent for self-improvement and prepare positive reinforcement audio for sleep",
-                "trigger_examples": ["I don't believe in myself", "I feel worthless", "I need confidence"],
-                "output": "Sleep meditation with calm tone and theta brain waves for subconscious reinforcement"
-            },
-            {
-                "name": "Workout Motivation",
-                "description": "Detect intent to feel energized during exercise and prepare motivation audio",
-                "trigger_examples": ["I need energy for my workout", "I feel lazy to exercise", "Motivate me for gym"],
-                "output": "Energetic workout meditation with beta brain waves and high volume"
-            },
-            {
-                "name": "Mindfulness & Present Moment",
-                "description": "Detect intent to be more present and prepare mindfulness meditation",
-                "trigger_examples": ["My mind is scattered", "I want to be more mindful", "I'm always distracted"],
-                "output": "Mindfulness meditation with calm tone and alpha brain waves"
-            },
-            {
-                "name": "Crisis & Stress Management",
-                "description": "Detect emotional crisis and high stress, provide immediate calming intervention",
-                "trigger_examples": ["I'm having a panic attack", "I can't cope anymore", "I feel suicidal"],
-                "output": "Crisis meditation with compassionate tone, alpha brain waves, plus emergency resources"
-            }
-        ],
-        
-        # Advanced emotional processing capabilities
-        "emotional_intelligence": {
-            "detection_capabilities": [
-                "Suppressed emotion identification",
-                "Self-esteem and confidence levels",
-                "Energy and motivation states", 
-                "Mindfulness and presence awareness",
-                "Crisis and stress intensity"
-            ],
-            "supported_emotions": {
-                "core_emotions": ["guilt", "fear", "grief", "anger", "desire", "lust"],
-                "complex_states": ["suppressed_anger", "hidden_grief", "low_self_worth", "lack_of_motivation", "mental_scattered", "crisis_overwhelm"],
-                "intensity_levels": ["low", "medium", "high", "crisis"]
-            }
-        },
-        
-        # Comprehensive intervention system
-        "intervention_system": {
-            "emotional_analysis": "Deep analysis of user's emotional state and suppressed feelings",
-            "intervention_planning": "Customized plan based on detected emotion and user context",
-            "audio_generation": "Personalized therapeutic audio with AI voice, background music, brain waves",
-            "recommendation_engine": "Evidence-based immediate and follow-up action suggestions",
-            "crisis_protocols": "Specialized handling for mental health emergencies"
-        },
-        
-        # Audio personalization features
-        "audio_capabilities": {
-            "meditation_types": {
-                "release_meditation": "For suppressed emotions (passionate tone, theta waves)",
-                "sleep_meditation": "For self-improvement during sleep (calm tone, theta waves)",
-                "workout_meditation": "For energy and motivation (energetic tone, beta waves)",
-                "mindfulness_meditation": "For present moment awareness (calm tone, alpha waves)",
-                "crisis_meditation": "For immediate calming (compassionate tone, alpha waves)"
-            },
-            "personalization": [
-                "Emotion-specific content targeting guilt, fear, grief, anger, desire",
-                "Intensity-based duration (10-20 minutes)",
-                "Brain wave optimization (alpha, beta, theta)",
-                "Background music selection",
-                "Volume adjustment based on emotional state"
-            ]
-        },
-        
-        # Integration for external AI models
-        "integration": {
-            "input_format": "Natural language emotional expression via MoodManagerRequest",
-            "schema_endpoint": "/brain/schema/request",
-            "example_usage": "Send user's emotional state, receive personalized audio + recommendations",
-            "response_format": "Structured intervention with audio file, emotional assessment, action plans"
-        }
-    }
-
-@brain_router.post("/analyze-emotion")
-async def analyze_emotion_only(user_input: str, context: Dict[str, Any] = None):
-    """Analyze emotional state without full intervention - uses the modular tools"""
-    if context is None:
-        context = {}
-        
-    # Use the imported tools directly
-    analysis = analyze_emotional_state(intent=user_input, context=context)
-    intervention_plan = plan_intervention(intent=user_input, context={"emotion_analysis": analysis})
-    
-    return {
-        "emotional_analysis": analysis,
-        "recommended_intervention": intervention_plan,
-        "metadata": {
-            "tools_used": ["analyze_emotional_state", "plan_intervention"],
-            "processing_method": "direct_tool_calls"
-        }
-    }
-
-@brain_router.get("/tools")
-async def get_available_tools():
-    """Get list of available tools that the LLM agent can orchestrate"""
-    return {
-        "description": "LLM Agent Tool Inventory - The mood manager brain orchestrates these specialized tools",
-        "total_tools": len(mood_brain.tools),
-        "tools": [
-            {
-                "name": "analyze_emotional_state",
-                "purpose": "Analyze user's emotional state from their intent and context",
-                "inputs": ["intent (str)", "context (dict)"],
-                "outputs": ["primary_emotion", "intensity", "crisis_level", "core_emotions", "confidence_level"]
-            },
-            {
-                "name": "plan_intervention", 
-                "purpose": "Plan therapeutic intervention strategy based on emotional context",
-                "inputs": ["intent (str)", "context (dict)"],
-                "outputs": ["audio_type", "voice_caching", "crisis_protocol", "intervention_type", "priority_level"]
-            },
-            {
-                "name": "prepare_audio_params",
-                "purpose": "Generate audio parameters based on emotion and audio type",
-                "inputs": ["request (dict)", "emotional_analysis (dict)", "audio_type (str)"],
-                "outputs": ["user_id", "duration", "selected_emotion", "selected_tone", "brain_waves_type", "music_style"]
-            },
-            {
-                "name": "call_audio_endpoint",
-                "purpose": "Execute audio generation with prepared parameters",
-                "inputs": ["audio_type (str)", "params (dict)"],
-                "outputs": ["success", "audio_file", "audio_uuid", "duration", "metadata"]
-            },
-            {
-                "name": "call_cache_endpoint",
-                "purpose": "Manage voice caching operations",
-                "inputs": ["endpoint (str)", "params (dict)"],
-                "outputs": ["success", "data", "endpoint", "method"]
-            },
-            {
-                "name": "generate_recommendations",
-                "purpose": "Create evidence-based immediate and follow-up actions",
-                "inputs": ["emotion_analysis (dict)", "results (optional dict)"],
-                "outputs": ["immediate_actions (list)", "follow_up_actions (list)"]
-            },
-            {
-                "name": "handle_crisis",
-                "purpose": "Provide specialized crisis intervention protocols",
-                "inputs": ["request (dict)", "emotional_analysis (dict)"],
-                "outputs": ["immediate_resources", "audio", "crisis_protocol_activated", "emergency_contacts"]
-            }
-        ],
-        "orchestration_flow": [
-            "1. analyze_emotional_state → Understand user's emotional state",
-            "2. plan_intervention → Choose optimal therapeutic approach", 
-            "3a. handle_crisis → If crisis detected, activate emergency protocols",
-            "3b. prepare_audio_params → Generate parameters for therapeutic audio",
-            "4. call_audio_endpoint → Execute audio generation",
-            "5. generate_recommendations → Provide actionable guidance",
-            "Optional: call_cache_endpoint for voice management"
-        ],
-        "agent_benefits": [
-            "Real intelligence via LLM reasoning vs hardcoded logic",
-            "Transparency through tool usage logging with LLM reasoning", 
-            "Extensibility for adding new tools without core logic changes",
-            "Focused tool responsibilities with detailed schemas"
-        ]
-    }
-
-@brain_router.get("/schema/request")
-async def get_request_schema():
-    """Get the exact schema for MoodManagerRequest - useful for external AI models"""
-    return {
-        "schema": MoodManagerRequest.model_json_schema(),
-        "example": {
-            "user_id": "user123",
-            "intent": "I'm feeling really anxious about my presentation tomorrow",
-            "context": {
-                "time_of_day": "evening",
-                "stress_level": 8,
-                "voice_preference": "calm_female",
-                "background_music": True,
-                "brain_waves": True,
-                "background_music_preference": "nature"
-            },
-            "priority": "high"
-        },
-        "description": "External AI models can use this schema to structure requests to /brain/process"
-    }
