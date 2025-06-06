@@ -1,12 +1,12 @@
 import os
 from typing import Optional, Any
-from redis_cache import RedisCache
-from mongo_cache import MongoCache
+from cache.redis_cache import RedisCache
+from cache.mongo_cache import MongoCache
 from fastapi import HTTPException
 
 class CacheManager:
     def __init__(self):
-        self.cache_backend = os.getenv("CACHE_BACKEND", "redis").lower()
+        self.cache_backend = os.getenv("CACHE_BACKEND", "mongodb").lower()
         self.cache = None
         self.fallback_cache = {}  # Simple in-memory fallback
         self._initialize_cache()

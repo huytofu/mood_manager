@@ -31,8 +31,13 @@ class MongoAudioManager:
     def _connect(self):
         """Establish MongoDB connection and initialize collections."""
         try:
-            self.client = MongoClient(self.connection_string)
-            self.db = self.client["meditation_app"]
+            self.client = MongoClient(
+                host=self.connection_string,
+                username=os.getenv("MONGO_USERNAME"),
+                password=os.getenv("MONGO_PASSWORD"),
+                database=os.getenv("MONGO_DATABASE")
+            )
+            self.db = self.client[os.getenv("MONGO_DATABASE")]
             
             # Test connection
             self.client.admin.command('ismaster')

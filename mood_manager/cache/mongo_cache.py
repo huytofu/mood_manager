@@ -2,7 +2,7 @@ from pymongo import MongoClient
 import os
 from typing import Optional, Any
 from datetime import datetime, timedelta
-from cache_utils import serialize_embedding, deserialize_embedding
+from cache.cache_utils import serialize_embedding, deserialize_embedding
 
 class MongoCache:
     def __init__(self):
@@ -15,10 +15,14 @@ class MongoCache:
         """Establish MongoDB connection and initialize collections."""
         try:
             connection_string = os.getenv("MONGO_CONNECTION_STRING", "mongodb://localhost:27017/")
-            database_name = os.getenv("MONGO_DATABASE", "meditation_app")
             
-            self.client = MongoClient(connection_string)
-            db = self.client[database_name]
+            self.client = MongoClient(
+                host=connection_string,
+                username=os.getenv("MONGO_USERNAME"),
+                password=os.getenv("MONGO_PASSWORD"),
+                database=os.getenv("MONGO_DATABASE")
+            )
+            db = self.client[os.getenv("MONGO_DATABASE")]
             self.collection = db["speaker_embeddings"]
             
             # Test connection

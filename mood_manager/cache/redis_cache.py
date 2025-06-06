@@ -1,7 +1,7 @@
 import redis
 import os
 from typing import Optional, Any
-from cache_utils import serialize_embedding, deserialize_embedding
+from cache.cache_utils import serialize_embedding, deserialize_embedding
 
 class RedisCache:
     def __init__(self):
