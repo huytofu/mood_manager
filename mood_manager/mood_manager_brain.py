@@ -43,7 +43,7 @@ from .mood_manager_tools import (
     handle_crisis,
     final_answer
 )
-from .mood_manager_prompts import MOOD_MANAGER_SYSTEM_PROMPT, get_user_prompt_template
+from .mood_manager_prompts import MOOD_MANAGER_SYSTEM_PROMPT, get_user_prompt_template, generate_tools_documentation
 
 # =============================================================================
 # MANAGER REQUEST/RESPONSE FORMATS
@@ -120,8 +120,11 @@ class MoodManagerBrain:
             final_answer
         ]
         
-        # System prompt for the LLM (imported from prompts file)
-        self.system_prompt = MOOD_MANAGER_SYSTEM_PROMPT
+        # Generate dynamic tools documentation
+        tools_documentation = generate_tools_documentation(self.tools)
+        
+        # System prompt for the LLM with dynamic tools documentation
+        self.system_prompt = MOOD_MANAGER_SYSTEM_PROMPT.format(tools_documentation=tools_documentation)
         self.context_memory = {}
         
         # Determine and initialize the agent in one step
