@@ -40,9 +40,10 @@ from .mood_manager_tools import (
     call_audio_endpoint,
     call_cache_endpoint,
     generate_recommendations,
-    handle_crisis
+    handle_crisis,
+    final_answer
 )
-from .mood_manager_prompts import MOOD_MANAGER_SYSTEM_PROMPT, get_user_prompt_template, get_react_format_reminder
+from .mood_manager_prompts import MOOD_MANAGER_SYSTEM_PROMPT, get_user_prompt_template
 
 # =============================================================================
 # MANAGER REQUEST/RESPONSE FORMATS
@@ -55,9 +56,7 @@ class MoodManagerRequest(BaseModel):
                         example="User is anxious about his presentation tomorrow. Please help to generate a meditation audio to help him.")
     context: Dict[str, Any] = Field(default_factory=dict, description="Additional context information",
                         example={
-                            "stress_level": 8,
-                            "selected_tone": "calm",
-                            "use_user_voice": True,
+                            "should_use_user_voice": True,
                             "should_use_background_music": True,
                             "should_use_brain_waves": True,
                             "music_style": "natural sounds",
@@ -66,7 +65,8 @@ class MoodManagerRequest(BaseModel):
     user_data: Dict[str, Any] = Field(default_factory=dict, description="Additional user data",
                             example={
                             "user_name": "John Doe",
-                            "user_crisis_level": 8,
+                            "user_selected_tone": "calm",
+                            "user_stress_level": 8,
                             "user_age": 30,
                             "user_gender": "male",
                             "user_text_input": "I am feeling anxious about my presentation tomorrow. Please help me to relax."
@@ -116,7 +116,8 @@ class MoodManagerBrain:
             call_audio_endpoint,
             call_cache_endpoint,
             generate_recommendations,
-            handle_crisis
+            handle_crisis,
+            final_answer
         ]
         
         # System prompt for the LLM (imported from prompts file)
@@ -238,21 +239,11 @@ class MoodManagerBrain:
         """
         Call LLM and execute tools based on agent type
         """
-        # Format input for agent
-        agent_input = f"""
-        User ID: {request.user_id}
-        Intent: {request.intent}
-        Context: {request.context}
-        Priority: {request.priority}
-        
-        Please help this user with their emotional state using your available tools.
-        """
-        
         try:
             if self.agent_type == "langchain":
-                return await self._call_langchain_agent(agent_input, request)
+                return await self._call_langchain_agent(prompt, request)
             elif self.agent_type == "smolagents":
-                return await self._call_smolagents_agent(agent_input, request)
+                return await self._call_smolagents_agent(prompt, request)
             else:
                 return await self._call_custom_agent(prompt, request)
                 
@@ -349,28 +340,48 @@ class MoodManagerBrain:
             })
             
             # 2. Check for crisis
-            if intervention_plan.get("crisis_protocol", False):
-                crisis_response = handle_crisis(request=request.dict())
+            if intervention_plan.get("is_crisis", False):
+                crisis_response = handle_crisis(
+                    user_id=request.user_id,
+                    user_data=request.user_data,
+                    context=request.context
+                )
                 results["crisis_response"] = crisis_response
                 results["intervention_type"] = "crisis"
                 results["tools_used"].append("handle_crisis")
                 results["steps"].append({
                     "thought": "Crisis detected in intervention plan. I must activate emergency protocols immediately.",
                     "action": "handle_crisis",
-                    "input": {"request": request.dict()},
+                    "input": {"user_id": request.user_id, "user_data": request.user_data, "context": request.context},
                     "observation": crisis_response
+                })
+                
+                # Generate final standardized response for crisis
+                final_response = final_answer(
+                    intervention_type="crisis",
+                    crisis_result=crisis_response
+                )
+                results["final_response"] = final_response
+                results["tools_used"].append("final_answer")
+                results["steps"].append({
+                    "thought": "I need to format the crisis response in a standardized way for the mood manager.",
+                    "action": "final_answer",
+                    "input": {"intervention_type": "crisis", "crisis_result": crisis_response},
+                    "observation": final_response
                 })
             else:
                 # 3. Prepare audio parameters
                 audio_params = prepare_audio_params(
-                    request=request.dict(),
+                    user_id=request.user_id,
+                    user_data=request.user_data,
+                    context=request.context,
                     audio_type=intervention_plan.get("audio_type", "mindfulness_meditation")
                 )
                 results["tools_used"].append("prepare_audio_params")
                 results["steps"].append({
                     "thought": f"No crisis detected. I need to prepare audio parameters for {intervention_plan.get('audio_type')} intervention.",
                     "action": "prepare_audio_params",
-                    "input": {"request": request.dict(), "audio_type": intervention_plan.get("audio_type")},
+                    "input": {"user_id": request.user_id, "user_data": request.user_data, "context": request.context, "audio_type": intervention_plan.get("audio_type")},
                     "observation": audio_params
                 })
                 
@@ -388,19 +399,34 @@ class MoodManagerBrain:
                     "observation": audio_result
                 })
             
-            # 5. Generate recommendations
-            recommendations = generate_recommendations(
-                request=request.dict(),
-                results=results.get("audio", None)
-            )
-            results["recommendations"] = recommendations
-            results["tools_used"].append("generate_recommendations")
-            results["steps"].append({
-                "thought": "Finally, I need to generate personalized recommendations to help the user with immediate and follow-up actions.",
-                "action": "generate_recommendations",
-                "input": {"request": request.dict(), "results": results.get("audio", None)},
-                "observation": recommendations
-            })
+                # 5. Generate recommendations
+                recommendations = generate_recommendations(
+                    user_data=request.user_data,
+                    results=results.get("audio", None)
+                )
+                results["recommendations"] = recommendations
+                results["tools_used"].append("generate_recommendations")
+                results["steps"].append({
+                    "thought": "Finally, I need to generate personalized recommendations to help the user with immediate and follow-up actions.",
+                    "action": "generate_recommendations",
+                    "input": {"user_data": request.user_data, "results": results.get("audio", None)},
+                    "observation": recommendations
+                })
+                
+                # Generate final standardized response for standard intervention
+                final_response = final_answer(
+                    intervention_type="standard",
+                    audio_result=results.get("audio"),
+                    recommendations=recommendations
+                )
+                results["final_response"] = final_response
+                results["tools_used"].append("final_answer")
+                results["steps"].append({
+                    "thought": "I need to format the intervention response in a standardized way for the mood manager.",
+                    "action": "final_answer",
+                    "input": {"intervention_type": "standard", "audio_result": results.get("audio"), "recommendations": recommendations},
+                    "observation": final_response
+                })
             
             results["final_result"] = {
                 "intervention_completed": True, 
@@ -411,12 +437,23 @@ class MoodManagerBrain:
             return results
             
         except Exception as e:
+            # Generate final standardized response for error
+            error_response = final_answer(
+                intervention_type="error",
+                error_message=f"Fallback agent error: {str(e)}"
+            )
             return {
                 "intervention_type": "error",
                 "error": f"Fallback agent error: {str(e)}",
                 "llm_reasoning": f"Failed to execute fallback agent: {str(e)}",
-                "tools_used": results.get("tools_used", []),
-                "steps": results.get("steps", []),
+                "tools_used": results.get("tools_used", []) + ["final_answer"],
+                "steps": results.get("steps", []) + [{
+                    "thought": "An error occurred during intervention execution. I need to format an error response.",
+                    "action": "final_answer",
+                    "input": {"intervention_type": "error", "error_message": f"Fallback agent error: {str(e)}"},
+                    "observation": error_response
+                }],
+                "final_response": error_response,
                 "agent_type": "custom_fallback"
             }
 
@@ -434,11 +471,8 @@ class MoodManagerBrain:
                 priority=request.priority
             )
             
-            # Add React format reminder for consistent formatting
-            full_prompt = user_prompt + get_react_format_reminder()
-            
             # Get LLM response with tool usage
-            llm_response = await self._call_llm_with_tools(full_prompt, request)
+            llm_response = await self._call_llm_with_tools(user_prompt, request)
             
             # Parse the LLM response and extract results
             return await self._synthesize_response(request, llm_response, {})
@@ -453,71 +487,57 @@ class MoodManagerBrain:
     
     async def _synthesize_response(self, request: MoodManagerRequest, llm_results: Dict) -> MoodManagerResponse:
         """
-        Synthesize final response from LLM tool usage results
+        Synthesize final response from LLM tool usage results using standardized final_response
         """
         try:
-            # Handle crisis response
-            intervention_type = llm_results.get("intervention_type", "standard")
-            if intervention_type == "crisis":
-                llm_response = llm_results.get("response", {})
+            # Extract standardized response from final_answer tool (Pydantic model)
+            final_response = llm_results.get("final_response")
+            
+            if final_response:
+                # Handle Pydantic model
+                intervention_type = final_response.intervention_type
+                success = intervention_type != "error"
+                
                 return MoodManagerResponse(
-                    success=True,
-                    audio=llm_response.get("audio", {"is_created": False, "file_path": None}),
+                    success=success,
+                    audio={
+                        "is_created": final_response.audio.is_created,
+                        "file_path": final_response.audio.file_path
+                    },
                     metadata={
-                        "is_error": False,
-                        "error_type": None,
+                        "is_error": not success,
+                        "error_type": final_response.error_type,
                         "intervention_type": intervention_type,
                         "priority": request.priority,
                         "processing_method": "llm_powered"
                     },
-                    recommendations=llm_response.get("recommendations", [
-                        "seek_professional_help",
-                        "contact_emergency_services_if_needed", 
-                        "check_in_1_hour"
-                    ])
+                    recommendations=final_response.recommendations
                 )
-            
-            # Handle error response
-            elif llm_results.get("intervention_type") == "error":
+            else:
+                # Fallback if no final_response available
+                intervention_type = llm_results.get("intervention_type", "error")
                 return MoodManagerResponse(
                     success=False,
                     audio={"is_created": False, "file_path": None},
                     metadata={
                         "is_error": True,
-                        "error_type": llm_results.get("error_type", "llm_execution_error"),
+                        "error_type": "missing_final_response",
                         "intervention_type": intervention_type,
                         "priority": request.priority,
                         "processing_method": "llm_powered"
                     },
-                    recommendations=llm_results.get("recommendations", ["retry_request", "contact_support"])
-                )
-            
-            # Handle standard intervention response
-            else:
-                audio = llm_results.get("audio", {"is_created": False, "file_path": None})
-                recommendations = llm_results.get("recommendations", ["retry_request", "contact_support"])
-                
-                return MoodManagerResponse(
-                    success=True,
-                    audio=audio,
-                    metadata={
-                        "is_error": False,
-                        "error_type": None,
-                        "intervention_type": intervention_type,
-                        "priority": request.priority,
-                        "processing_method": "llm_powered"
-                    },
-                    recommendations=recommendations
+                    recommendations=["retry_request", "contact_support"]
                 )
                 
         except Exception as e:
+            # Fallback if final_response is missing or malformed
             return MoodManagerResponse(
                 success=False,
                 audio={"is_created": False, "file_path": None},
                 metadata={
                     "is_error": True,
                     "error_type": "response_synthesis_error",
-                    "intervention_type": intervention_type,
+                    "intervention_type": "error",
                     "priority": request.priority,
                     "processing_method": "llm_powered"
                 },

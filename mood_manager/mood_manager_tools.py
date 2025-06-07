@@ -25,7 +25,9 @@ class InterventionPlanInput(BaseModel):
     user_data: Dict[str, Any] = Field(..., description="User data including emotional analysis from Master Manager")
 
 class AudioParamsInput(BaseModel):
-    request: Dict[str, Any] = Field(..., description="MoodManagerRequest data as dict containing user_data with emotional analysis")
+    user_id: str = Field(..., description="User identifier")
+    user_data: Dict[str, Any] = Field(..., description="User data including stress level, text input, etc.")
+    context: Dict[str, Any] = Field(..., description="Context with preferences for audio generation")
     audio_type: str = Field(..., description="Type of audio intervention determined by plan_intervention")
 
 class AudioEndpointInput(BaseModel):
@@ -37,11 +39,30 @@ class CacheEndpointInput(BaseModel):
     params: Dict[str, Any] = Field(..., description="Parameters for the cache endpoint")
 
 class RecommendationsInput(BaseModel):
-    request: Dict[str, Any] = Field(..., description="MoodManagerRequest data as dict containing user_data with emotional analysis")
+    user_data: Dict[str, Any] = Field(..., description="User data including stress level, text input, etc.")
     results: Optional[Dict[str, Any]] = Field(default=None, description="Intervention results (optional)")
 
 class CrisisHandlingInput(BaseModel):
-    request: Dict[str, Any] = Field(..., description="MoodManagerRequest data as dict containing user_data with emotional analysis")
+    user_id: str = Field(..., description="User identifier")
+    user_data: Dict[str, Any] = Field(..., description="User data including stress level, text input, etc.")
+    context: Dict[str, Any] = Field(..., description="Context with user preferences")
+
+class FinalAnswerInput(BaseModel):
+    intervention_type: str = Field(..., description="Type of intervention: 'standard', 'crisis', or 'error'")
+    audio_result: Optional[Dict[str, Any]] = Field(default=None, description="Audio generation result from call_audio_endpoint")
+    crisis_result: Optional[Dict[str, Any]] = Field(default=None, description="Crisis handling result from handle_crisis")
+    recommendations: Optional[List[str]] = Field(default=None, description="Recommendations from generate_recommendations")
+    error_message: Optional[str] = Field(default=None, description="Error message if intervention_type is 'error'")
+
+class AudioOutput(BaseModel):
+    is_created: bool = Field(..., description="Whether audio was successfully created")
+    file_path: Optional[str] = Field(default=None, description="Path to the generated audio file")
+
+class FinalAnswerOutput(BaseModel):
+    audio: AudioOutput = Field(..., description="Audio generation results")
+    recommendations: List[str] = Field(..., description="List of actionable recommendations for the user")
+    intervention_type: str = Field(..., description="Type of intervention performed: 'standard', 'crisis', or 'error'")
+    error_type: Optional[str] = Field(default=None, description="Error type if intervention failed, None otherwise")
 
 # =============================================================================
 # MOOD MANAGER TOOLS
@@ -59,11 +80,10 @@ def plan_intervention(intent: str, context: Dict[str, Any], user_data: Dict[str,
     
     Returns:
     - Dict containing: audio_type (str), voice_caching (bool), follow_up_actions (List[str]), 
-      crisis_protocol (bool), intervention_type (str), priority_level (str)
+      is_crisis (bool), intervention_type (str), priority_level (str)
     """
-    # Extract emotional analysis from user_data
-    emotional_analysis = user_data.get("emotional_analysis", {})
-    user_crisis_level = user_data.get("user_crisis_level", 0)
+    # Extract data from user_data (based on MoodManagerRequest example structure)
+    user_stress_level = user_data.get("user_stress_level", 0)
     user_text_input = user_data.get("user_text_input", "")
     
     intent_lower = intent.lower()
@@ -74,22 +94,22 @@ def plan_intervention(intent: str, context: Dict[str, Any], user_data: Dict[str,
         "audio_type": None,
         "voice_caching": False,
         "follow_up_actions": [],
-        "crisis_protocol": False,
         "intervention_type": "standard",
-        "priority_level": "normal"
+        "priority_level": "normal",
+        "is_crisis": False
     }
     
-    # Crisis detection based on crisis level or emotional analysis
-    is_crisis = (user_crisis_level >= 8 or 
-                emotional_analysis.get("is_crisis", False) or
-                any(crisis_word in user_input_lower for crisis_word in ["suicide", "kill myself", "panic attack", "can't cope"]))
+    # Crisis detection based on stress level or crisis keywords
+    crisis_keywords = ["suicide", "kill myself", "panic attack", "can't cope", "want to die", "end it all", "hopeless"]
+    is_crisis = (user_stress_level >= 8 or 
+                any(crisis_word in user_input_lower for crisis_word in crisis_keywords))
     
     if is_crisis:
         intervention.update({
             "audio_type": "crisis_meditation",
-            "crisis_protocol": True,
             "intervention_type": "crisis",
-            "priority_level": "urgent"
+            "priority_level": "urgent",
+            "is_crisis": True
         })
         return intervention
     
@@ -116,7 +136,7 @@ def plan_intervention(intent: str, context: Dict[str, Any], user_data: Dict[str,
     intervention["voice_caching"] = True
         
     # Plan follow-up actions  
-    if emotional_analysis.get("is_crisis", False):
+    if is_crisis or user_stress_level >= 7:
         intervention["follow_up_actions"] = ["Schedule check-in within 1 hour", "Track mood progress", "Keep emergency contacts accessible"]
     else:
         intervention["follow_up_actions"] = ["Provide optional feedback on intervention effectiveness"]
@@ -124,12 +144,14 @@ def plan_intervention(intent: str, context: Dict[str, Any], user_data: Dict[str,
     return intervention
 
 @tool("prepare_audio_params", args_schema=AudioParamsInput)
-def prepare_audio_params(request: Dict[str, Any], audio_type: str) -> Dict[str, Any]:
+def prepare_audio_params(user_id: str, user_data: Dict[str, Any], context: Dict[str, Any], audio_type: str) -> Dict[str, Any]:
     """
     Tool Purpose: Prepare parameters for audio generation based on user's emotional context and intervention type.
     
     Args:
-    - request (Dict[str, Any]): MoodManagerRequest data containing user_id, context, and user_data with emotional analysis
+    - user_id (str): User identifier
+    - user_data (Dict[str, Any]): User data including stress level, text input, etc.
+    - context (Dict[str, Any]): Context with preferences for audio generation
     - audio_type (str): Type of audio intervention determined by plan_intervention
     
     Returns:
@@ -137,63 +159,69 @@ def prepare_audio_params(request: Dict[str, Any], audio_type: str) -> Dict[str, 
       should_generate_background_music (bool), should_generate_brain_waves (bool), music_style (str), 
       brain_waves_type (str), volume_magnitude (str)
     """
-    # Extract data from request
-    user_data = request.get("user_data", {})
-    emotional_analysis = user_data.get("emotional_analysis", {})
-    selected_emotion = emotional_analysis.get("selected_emotion", "fear")
-    context = request.get("context", {})
+    # Extract data from user_data
+    user_stress_level = user_data.get("user_stress_level", 0)
+    user_selected_tone = user_data.get("user_selected_tone", "calm")
+    user_text_input = user_data.get("user_text_input", "")
     
     # Base parameters matching _call_audio_endpoint format
     params = {
-        "user_id": request.get("user_id"),
-        "duration": 10,  # Default duration in minutes
-        "should_generate_background_music": context.get("background_music", True),
-        "should_generate_brain_waves": context.get("brain_waves", True),
-        "music_style": context.get("background_music_preference", "nature"),
+        "user_id": user_id,
+        "duration": context.get("duration", 10),  # Get from context or default
+        "should_generate_background_music": context.get("should_use_background_music", True),
+        "should_generate_brain_waves": context.get("should_use_brain_waves", True),
+        "music_style": context.get("music_style", "nature"),
         "volume_magnitude": "low"
     }
     
-    # Map emotions to supported values: guilt, fear, grief, anger, desire
-    emotion_mapping = {
-        "stress": "fear", "anxiety": "fear", "sadness": "grief", "depression": "grief",
-        "frustration": "anger", "worry": "fear", "overwhelmed": "fear", "shame": "guilt",
-        "loss": "grief", "hatred": "anger", "jealousy": "desire", "envy": "desire",
-        "lust": "desire", "annoyance": "anger", "disappointment": "anger", "disgust": "anger",
-    }
+    # Infer emotion from user input text and stress level
+    user_input_lower = user_text_input.lower()
+    inferred_emotion = "fear"  # default
     
-    mapped_emotion = emotion_mapping.get(selected_emotion, selected_emotion)
-    supported_emotions = ["guilt", "fear", "grief", "anger", "desire", "lust"]
-    if mapped_emotion not in supported_emotions:
-        mapped_emotion = "fear"
+    if any(word in user_input_lower for word in ["angry", "mad", "frustrated", "annoyed"]):
+        inferred_emotion = "anger"
+    elif any(word in user_input_lower for word in ["sad", "depressed", "grief", "loss", "mourning"]):
+        inferred_emotion = "grief"
+    elif any(word in user_input_lower for word in ["guilty", "shame", "regret", "blame"]):
+        inferred_emotion = "guilt"
+    elif any(word in user_input_lower for word in ["desire", "want", "need", "crave"]):
+        inferred_emotion = "desire"
+    elif user_stress_level >= 6:
+        inferred_emotion = "fear"  # High stress maps to fear
     
     # Customize parameters based on audio type
     if audio_type == "release_meditation":
         params.update({
-            "selected_emotion": mapped_emotion,
-            "duration": 10,
-            "selected_tone": "passionate",
+            "selected_emotion": inferred_emotion,
+            "selected_tone": user_selected_tone or "passionate",
             "brain_waves_type": "theta",
             "volume_magnitude": "low"
         })
     elif audio_type == "sleep_meditation":
         params.update({
-            "duration": 20, "selected_tone": "calm",
-            "brain_waves_type": "theta", "volume_magnitude": "low"
+            "duration": context.get("duration", 20),
+            "selected_tone": user_selected_tone or "calm",
+            "brain_waves_type": "theta", 
+            "volume_magnitude": "low"
         })
     elif audio_type == "mindfulness_meditation":
         params.update({
-            "duration": 10, "selected_tone": "calm",
-            "brain_waves_type": "alpha", "volume_magnitude": "low"
+            "selected_tone": user_selected_tone or "calm",
+            "brain_waves_type": "alpha", 
+            "volume_magnitude": "low"
         })
     elif audio_type == "workout_meditation":
         params.update({
-            "duration": 20, "selected_tone": "energetic",
-            "brain_waves_type": "beta", "volume_magnitude": "high"
+            "duration": context.get("duration", 20),
+            "selected_tone": user_selected_tone or "energetic",
+            "brain_waves_type": "beta", 
+            "volume_magnitude": "high"
         })
     elif audio_type == "crisis_meditation":
         params.update({
-            "duration": 10, "selected_tone": "compassionate",
-            "brain_waves_type": "alpha", "volume_magnitude": "low"
+            "selected_tone": "compassionate",  # Override user tone for crisis
+            "brain_waves_type": "alpha", 
+            "volume_magnitude": "low"
         })
         
     return params
@@ -270,8 +298,8 @@ async def call_audio_endpoint(audio_type: str, params: Dict[str, Any]) -> Dict[s
             "audio_file": result.get("output_audio_path"),
             "audio_uuid": result.get("output_audio_uuid"),
             "duration": min_length * 60,
-            "metadata": {"audio_type": audio_type, "background_options": background_options, "parameters": params},
-            "endpoint": audio_type, "method": "direct_call"
+            "metadata": {"background_options": background_options, "user_id": user_id},
+            "intervention_type": audio_type 
         }
         
     except Exception as e:
@@ -309,24 +337,35 @@ async def call_cache_endpoint(endpoint: str, params: Dict[str, Any]) -> Dict[str
         return {"success": False, "error": str(e), "endpoint": endpoint, "method": "direct_call"}
 
 @tool("generate_recommendations", args_schema=RecommendationsInput)
-def generate_recommendations(request: Dict[str, Any], results: Optional[Dict[str, Any]] = None) -> List[str]:
+def generate_recommendations(user_data: Dict[str, Any], results: Optional[Dict[str, Any]] = None) -> List[str]:
     """
     Tool Purpose: Generate evidence-based immediate and follow-up recommendations based on user's emotional state and intervention results.
     
     Args:
-    - request (Dict[str, Any]): MoodManagerRequest data containing user_data with emotional analysis from Master Manager
+    - user_data (Dict[str, Any]): User data including stress level, text input, etc.
     - results (Optional[Dict[str, Any]]): Intervention results including audio generation outcomes (optional)
     
     Returns:
     - List[str]: All recommendations (immediate actions and follow-up actions combined) as a flat list
     """
-    # Extract emotional analysis from user_data
-    user_data = request.get("user_data", {})
-    emotion_analysis = user_data.get("emotional_analysis", {})
-    user_crisis_level = user_data.get("user_crisis_level", 0)
+    # Extract data from user_data
+    user_stress_level = user_data.get("user_stress_level", 0)
+    user_text_input = user_data.get("user_text_input", "")
     
-    primary_emotion = emotion_analysis.get("primary_emotion", "stress")
-    intensity = emotion_analysis.get("intensity", user_crisis_level / 10.0 if user_crisis_level else 0.5)
+    # Infer primary emotion from user input text
+    user_input_lower = user_text_input.lower()
+    primary_emotion = "stress"  # default
+    
+    if any(word in user_input_lower for word in ["anxious", "nervous", "worried", "scared"]):
+        primary_emotion = "anxiety"
+    elif any(word in user_input_lower for word in ["angry", "mad", "frustrated"]):
+        primary_emotion = "anger"
+    elif any(word in user_input_lower for word in ["sad", "depressed", "down"]):
+        primary_emotion = "sadness"
+    elif any(word in user_input_lower for word in ["overwhelmed", "too much", "can't handle"]):
+        primary_emotion = "overwhelmed"
+    
+    intensity = user_stress_level / 10.0 if user_stress_level else 0.5
     
     all_recommendations = []
     
@@ -389,19 +428,21 @@ def generate_recommendations(request: Dict[str, Any], results: Optional[Dict[str
     return all_recommendations
 
 @tool("handle_crisis", args_schema=CrisisHandlingInput)
-async def handle_crisis(request: Dict[str, Any]) -> Dict[str, Any]:
+async def handle_crisis(user_id: str, user_data: Dict[str, Any], context: Dict[str, Any]) -> Dict[str, Any]:
     """
     Tool Purpose: Provide specialized crisis intervention for users showing high crisis indicators or suicidal ideation.
     
     Args:
-    - request (Dict[str, Any]): MoodManagerRequest data containing user_id, context, and user_data with emotional analysis
+    - user_id (str): User identifier
+    - user_data (Dict[str, Any]): User data including stress level, text input, etc.
+    - context (Dict[str, Any]): Context with user preferences
     
     Returns:
-    - Dict containing: audio (Dict), crisis_protocol_activated (bool), 
+    - Dict containing: audio (Dict), is_crisis (bool), 
       recommendations (List[str]) with immediate resources and follow-up actions
     """
     # Prepare crisis meditation audio
-    audio_params = prepare_audio_params(request, "crisis_meditation")
+    audio_params = prepare_audio_params(user_id, user_data, context, "crisis_meditation")
     audio_result = await call_audio_endpoint("crisis_meditation", audio_params)
     
     # Generate comprehensive crisis recommendations
@@ -421,8 +462,71 @@ async def handle_crisis(request: Dict[str, Any]) -> Dict[str, Any]:
     
     crisis_response = {
         "audio": audio_result,
-        "crisis_protocol_activated": True,
+        "is_crisis": True,
         "recommendations": crisis_recommendations
     }
     
     return crisis_response
+
+@tool("final_answer", args_schema=FinalAnswerInput)
+def final_answer(
+    intervention_type: str,
+    audio_result: Optional[Dict[str, Any]] = None,
+    crisis_result: Optional[Dict[str, Any]] = None,
+    recommendations: Optional[List[str]] = None,
+    error_message: Optional[str] = None
+) -> FinalAnswerOutput:
+    """
+    Tool Purpose: Standardize the final response format for mood management interventions.
+    
+    Args:
+    - intervention_type (str): Type of intervention: 'standard', 'crisis', or 'error'
+    - audio_result (Optional[Dict]): Audio generation result from call_audio_endpoint
+    - crisis_result (Optional[Dict]): Crisis handling result from handle_crisis
+    - recommendations (Optional[List[str]]): Recommendations from generate_recommendations
+    - error_message (Optional[str]): Error message if intervention_type is 'error'
+    
+    Returns:
+    - FinalAnswerOutput: Validated Pydantic model with audio, recommendations, intervention_type, and error_type
+    """
+    # Initialize default values
+    audio_output = AudioOutput(is_created=False, file_path=None)
+    response_recommendations = []
+    error_type = None
+    
+    if intervention_type == "error":
+        error_type = "intervention_error"
+        response_recommendations = ["retry_request", "contact_support"]
+    
+    elif intervention_type == "crisis":
+        if crisis_result:
+            # Extract audio from crisis result
+            crisis_audio = crisis_result.get("audio", {})
+            audio_output = AudioOutput(
+                is_created=crisis_audio.get("success", False),
+                file_path=crisis_audio.get("audio_file", None)
+            )
+            response_recommendations = crisis_result.get("recommendations", [
+                "seek_professional_help",
+                "contact_emergency_services_if_needed", 
+                "check_in_1_hour"
+            ])
+    
+    elif intervention_type == "standard":
+        if audio_result:
+            audio_output = AudioOutput(
+                is_created=audio_result.get("success", False),
+                file_path=audio_result.get("audio_file", None)
+            )
+        
+        if recommendations:
+            response_recommendations = recommendations
+        else:
+            response_recommendations = ["track_mood_progress", "optional_feedback"]
+    
+    return FinalAnswerOutput(
+        audio=audio_output,
+        recommendations=response_recommendations,
+        intervention_type=intervention_type,
+        error_type=error_type
+    )

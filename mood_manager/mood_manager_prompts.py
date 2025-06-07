@@ -53,10 +53,10 @@ handle_crisis(request: dict) -> dict
 
 Recommended Tool Orchestration Flow: plan_intervention → prepare_audio_params → call_audio_endpoint → generate_recommendations
 
-RECOMMENDED THOUGHT PATTERN:
+IMPORTANT: EXPECTED THOUGHT PATTERN:
 =============
 
-You must follow this exact REACT format for each step:
+You must follow this exact REACT PATTERN for each step:
 
 Thought: [Your reasoning about what to do next]
 Action: [tool_name]
@@ -75,7 +75,7 @@ INSTRUCTIONS:
 3. Generate therapeutic audio when appropriate
 4. Provide actionable recommendations
 5. Be empathetic and personalized in your approach
-6. Use the exact React format for each step
+6. Use the exact REACT PATTERN for each step as suggested in the IMPORTANT section
 7. End with a comprehensive Final Answer
 
 Always prioritize user safety and provide empathetic, personalized support."""
@@ -104,20 +104,6 @@ def get_user_prompt_template(user_id: str, intent: str, context: dict, user_data
         Context: {context}
         Priority: {priority}
 
-        Begin your React reasoning now:
-    """
-
-def get_react_format_reminder() -> str:
-    """
-    Returns React format reminder for consistent LLM responses
-    """
-    return """
-        Remember to follow this exact REACT format for each step:
-
-        Thought: [Your reasoning about what to do next]
-        Action: [tool_name]
-        Action Input: [JSON parameters for the tool]
-        Observation: [Result from the tool execution]
-
-        End with: Final Answer: [Complete JSON response with all results]
+        Please help this user with their emotional state using your available tools.
+        Begin your reasoning now:
     """
