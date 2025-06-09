@@ -28,7 +28,8 @@ except ImportError:
 
 # Option 2: HuggingFace CodeAgent  
 try:
-    from smolagents import CodeAgent, HfApiModel
+    import yaml
+    from smolagents import CodeAgent, HfApiModel, Tool as SmolAgentTool
     SMOLAGENTS_AVAILABLE = True
 except ImportError:
     SMOLAGENTS_AVAILABLE = False
@@ -218,11 +219,20 @@ class MoodManagerBrain:
             # Note: smolagents expects tools to be classes or have specific format
             # This might need adjustment based on your tool implementations
             
+            # Transform langchain tools to smolagents format
+            smolagents_tools = []
+            for tool in self.tools:
+                smolagents_tools.append(SmolAgentTool.from_langchain_tool(tool))
+            
+            with open("prompts/mood_manager_smolagents.yaml", "r") as f:
+                prompt_templates = yaml.safe_load(f)
+            
             # Create CodeAgent  
             self.agent = CodeAgent(
-                tools=self.tools,
+                tools=smolagents_tools,
                 model=self.model,
-                max_iterations=10
+                max_iterations=10,
+                prompt_templates=prompt_templates
             )
             
             print("✅ HuggingFace CodeAgent initialized successfully")
