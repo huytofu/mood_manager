@@ -1,14 +1,17 @@
 from fastapi import APIRouter, Depends
-from utils.meditation_utils import generate_meditation_audio
+from utils.meditation_utils import generate_meditation_audio, generate_meditation_audio_advanced
 from utils.background_utils import generate_background_music, generate_brainwave, combine_audio
 from utils.dependencies import get_tts_model
 from typing import Any
 
 router = APIRouter(tags=["audio"])
 
-async def _generate_release_meditation_audio(user_id: str, selected_emotion: str, selected_tone: str, min_length: int, background_options: dict, tts_model: Any):
-    # Generate the emotional, speaker-cloned audio
-    output_path, output_uuid = generate_meditation_audio(user_id, tts_model, "release", selected_emotion, selected_tone, min_length, background_options)
+async def _generate_release_meditation_audio(user_id: str, selected_emotion: str, selected_tone: str, min_length: int, background_options: dict, tts_model: Any, use_advanced_tts: bool = True):
+    # Generate the emotional, speaker-cloned audio with advanced controls
+    if use_advanced_tts:
+        output_path, output_uuid = generate_meditation_audio_advanced(user_id, tts_model, "release", selected_emotion, selected_tone, min_length, use_advanced_control=True)
+    else:
+        output_path, output_uuid = generate_meditation_audio(user_id, tts_model, "release", selected_emotion, selected_tone, min_length)
 
     background_music_path = None
     brain_waves_path = None
@@ -34,9 +37,12 @@ async def _generate_release_meditation_audio(user_id: str, selected_emotion: str
 
     return {"status": "success", "output_audio_path": combined_audio_path, "output_audio_uuid": combined_audio_uuid}
 
-async def _generate_sleep_meditation_audio(user_id: str, min_length: int, background_options: dict, tts_model: Any):
-    # Generate the emotional, speaker-cloned audio
-    output_path, output_uuid = generate_meditation_audio(user_id, tts_model, "sleep", None, "calm", min_length, background_options)
+async def _generate_sleep_meditation_audio(user_id: str, min_length: int, background_options: dict, tts_model: Any, use_advanced_tts: bool = True):
+    # Generate the emotional, speaker-cloned audio with advanced controls
+    if use_advanced_tts:
+        output_path, output_uuid = generate_meditation_audio_advanced(user_id, tts_model, "sleep", None, "calm", min_length, use_advanced_control=True)
+    else:
+        output_path, output_uuid = generate_meditation_audio(user_id, tts_model, "sleep", None, "calm", min_length)
 
     background_music_path = None
     brain_waves_path = None
@@ -60,9 +66,12 @@ async def _generate_sleep_meditation_audio(user_id: str, min_length: int, backgr
 
     return {"status": "success", "output_audio_path": combined_audio_path, "output_audio_uuid": combined_audio_uuid}
 
-async def _generate_mindfulness_meditation_audio(user_id: str, min_length: int, background_options: dict, tts_model: Any):
-    # Generate the emotional, speaker-cloned audio
-    output_path, output_uuid = generate_meditation_audio(user_id, tts_model, "mindfulness", None, "calm", min_length, background_options)
+async def _generate_mindfulness_meditation_audio(user_id: str, min_length: int, background_options: dict, tts_model: Any, use_advanced_tts: bool = True):
+    # Generate the emotional, speaker-cloned audio with advanced controls
+    if use_advanced_tts:
+        output_path, output_uuid = generate_meditation_audio_advanced(user_id, tts_model, "mindfulness", None, "calm", min_length, use_advanced_control=True)
+    else:
+        output_path, output_uuid = generate_meditation_audio(user_id, tts_model, "mindfulness", None, "calm", min_length)
 
     background_music_path = None
     brain_waves_path = None
@@ -86,9 +95,12 @@ async def _generate_mindfulness_meditation_audio(user_id: str, min_length: int, 
 
     return {"status": "success", "output_audio_path": combined_audio_path, "output_audio_uuid": combined_audio_uuid}
 
-async def _generate_workout_meditation_audio(user_id: str, selected_tone: str, min_length: int, background_options: dict, tts_model: Any):
-    # Generate the emotional, speaker-cloned audio
-    output_path, output_uuid = generate_meditation_audio(user_id, tts_model, "workout", None, selected_tone, min_length, background_options)
+async def _generate_workout_meditation_audio(user_id: str, selected_tone: str, min_length: int, background_options: dict, tts_model: Any, use_advanced_tts: bool = True):
+    # Generate the emotional, speaker-cloned audio with advanced controls
+    if use_advanced_tts:
+        output_path, output_uuid = generate_meditation_audio_advanced(user_id, tts_model, "workout", None, selected_tone, min_length, use_advanced_control=True)
+    else:
+        output_path, output_uuid = generate_meditation_audio(user_id, tts_model, "workout", None, selected_tone, min_length)
 
     background_music_path = None
     brain_waves_path = None
@@ -112,9 +124,12 @@ async def _generate_workout_meditation_audio(user_id: str, selected_tone: str, m
 
     return {"status": "success", "output_audio_path": combined_audio_path, "output_audio_uuid": combined_audio_uuid}
 
-async def _generate_crisis_meditation_audio(user_id: str, selected_tone: str, min_length: int, background_options: dict, tts_model: Any):
-    # Generate the emotional, speaker-cloned audio
-    output_path, output_uuid = generate_meditation_audio(user_id, tts_model, "crisis", None, selected_tone, min_length, background_options)
+async def _generate_crisis_meditation_audio(user_id: str, selected_tone: str, min_length: int, background_options: dict, tts_model: Any, use_advanced_tts: bool = True):
+    # Generate the emotional, speaker-cloned audio with advanced controls
+    if use_advanced_tts:
+        output_path, output_uuid = generate_meditation_audio_advanced(user_id, tts_model, "crisis", None, selected_tone, min_length, use_advanced_control=True)
+    else:
+        output_path, output_uuid = generate_meditation_audio(user_id, tts_model, "crisis", None, selected_tone, min_length)
 
     background_music_path = None
     brain_waves_path = None
@@ -139,7 +154,7 @@ async def _generate_crisis_meditation_audio(user_id: str, selected_tone: str, mi
 @router.post("/generate_release_meditation_audio",
         operation_id="generate_release_meditation_audio",
         description='''
-        Generate a release meditation audio.
+        Generate a release meditation audio with AI-generated strategic pauses and optional speed/temperature control.
         Args:
             user_id: str
             selected_emotion: str (user-selected emotion for release)
@@ -154,18 +169,19 @@ async def _generate_crisis_meditation_audio(user_id: str, selected_tone: str, mi
                     "volume_magnitude": "high"
                 }
             )
+            use_advanced_tts: bool (optional, default True - enables speed and temperature control for more natural pacing)
         Returns:
             a dictionary with properties `status`, `output_audio_path`
         ''',
         response_description="a dictionary with properties `status`, `output_audio_path` if successful, or an error message if not")
-async def generate_release_meditation_audio(user_id: str, selected_emotion: str, selected_tone: str, min_length: int, background_options: dict, tts_model=Depends(get_tts_model)):
-    """Generate a release meditation audio."""
-    return await _generate_release_meditation_audio(user_id, selected_emotion, selected_tone, min_length, background_options, tts_model)
+async def generate_release_meditation_audio(user_id: str, selected_emotion: str, selected_tone: str, min_length: int, background_options: dict, use_advanced_tts: bool = True, tts_model=Depends(get_tts_model)):
+    """Generate a release meditation audio with AI-generated pauses and optional advanced TTS controls."""
+    return await _generate_release_meditation_audio(user_id, selected_emotion, selected_tone, min_length, background_options, tts_model, use_advanced_tts)
 
 @router.post("/generate_sleep_meditation_audio",
         operation_id="generate_sleep_meditation_audio",
         description='''
-        Generate a sleep meditation audio.
+        Generate a sleep meditation audio with AI-generated strategic pauses and optional speed/temperature control.
         Args:
             user_id: str
             min_length: int (minimum length of the audio in minutes)
@@ -178,18 +194,19 @@ async def generate_release_meditation_audio(user_id: str, selected_emotion: str,
                     "volume_magnitude": "low"
                 }
             )
+            use_advanced_tts: bool (optional, default True - enables slower speech rate for better sleep meditation)
         Returns:
             a dictionary with properties `status`, `output_audio_path`
         ''',
         response_description="a dictionary with properties `status`, `output_audio_path` if successful, or an error message if not")
-async def generate_sleep_meditation_audio(user_id: str, min_length: int, background_options: dict, tts_model=Depends(get_tts_model)):
-    """Generate a sleep meditation audio."""
-    return await _generate_sleep_meditation_audio(user_id, min_length, background_options, tts_model)
+async def generate_sleep_meditation_audio(user_id: str, min_length: int, background_options: dict, use_advanced_tts: bool = True, tts_model=Depends(get_tts_model)):
+    """Generate a sleep meditation audio with AI-generated pauses and optional advanced TTS controls."""
+    return await _generate_sleep_meditation_audio(user_id, min_length, background_options, tts_model, use_advanced_tts)
 
 @router.post("/generate_mindfulness_meditation_audio",
         operation_id="generate_mindfulness_meditation_audio",
         description='''
-        Generate a mindfulness meditation audio.
+        Generate a mindfulness meditation audio with AI-generated pauses and optional advanced TTS controls.
         Args:
             user_id: str
             min_length: int (minimum length of the audio in minutes)
@@ -202,18 +219,19 @@ async def generate_sleep_meditation_audio(user_id: str, min_length: int, backgro
                     "volume_magnitude": "low"
                 }
             )
+            use_advanced_tts: bool (optional, default True - enables speed and temperature control for more natural pacing)
         Returns:
             a dictionary with properties `status`, `output_audio_path`
         ''',
         response_description="a dictionary with properties `status`, `output_audio_path` if successful, or an error message if not")
-async def generate_mindfulness_meditation_audio(user_id: str, min_length: int, background_options: dict, tts_model=Depends(get_tts_model)):
-    """Generate a mindfulness meditation audio."""
-    return await _generate_mindfulness_meditation_audio(user_id, min_length, background_options, tts_model)
+async def generate_mindfulness_meditation_audio(user_id: str, min_length: int, background_options: dict, use_advanced_tts: bool = True, tts_model=Depends(get_tts_model)):
+    """Generate a mindfulness meditation audio with AI-generated pauses and optional advanced TTS controls."""
+    return await _generate_mindfulness_meditation_audio(user_id, min_length, background_options, tts_model, use_advanced_tts)
 
 @router.post("/generate_workout_meditation_audio",
         operation_id="generate_workout_meditation_audio",
         description='''
-        Generate a workout meditation audio.
+        Generate a workout meditation audio with AI-generated pauses and optional advanced TTS controls.
         Args:
             user_id: str
             selected_tone: str (user-selected tone for message)
@@ -227,18 +245,19 @@ async def generate_mindfulness_meditation_audio(user_id: str, min_length: int, b
                     "volume_magnitude": "high"
                 }
             )
+            use_advanced_tts: bool (optional, default True - enables speed and temperature control for more natural pacing)
         Returns:
             a dictionary with properties `status`, `output_audio_path`
         ''',
         response_description="a dictionary with properties `status`, `output_audio_path` if successful, or an error message if not")
-async def generate_workout_meditation_audio(user_id: str, selected_tone: str, min_length: int, background_options: dict, tts_model=Depends(get_tts_model)):
-    """Generate a workout meditation audio."""
-    return await _generate_workout_meditation_audio(user_id, selected_tone, min_length, background_options, tts_model)
+async def generate_workout_meditation_audio(user_id: str, selected_tone: str, min_length: int, background_options: dict, use_advanced_tts: bool = True, tts_model=Depends(get_tts_model)):
+    """Generate a workout meditation audio with AI-generated pauses and optional advanced TTS controls."""
+    return await _generate_workout_meditation_audio(user_id, selected_tone, min_length, background_options, tts_model, use_advanced_tts)
 
 @router.post("/generate_crisis_meditation_audio",
         operation_id="generate_crisis_meditation_audio",
         description='''
-        Generate a crisis meditation audio.
+        Generate a crisis meditation audio with AI-generated pauses and optional advanced TTS controls.
         Args:
             user_id: str
             selected_tone: str (user-selected tone for message)
@@ -252,10 +271,11 @@ async def generate_workout_meditation_audio(user_id: str, selected_tone: str, mi
                     "volume_magnitude": "low"
                 }
             )
+            use_advanced_tts: bool (optional, default True - enables speed and temperature control for more natural pacing)
         Returns:    
             a dictionary with properties `status`, `output_audio_path`
         ''',
         response_description="a dictionary with properties `status`, `output_audio_path` if successful, or an error message if not")
-async def generate_crisis_meditation_audio(user_id: str, selected_tone: str, min_length: int, background_options: dict, tts_model=Depends(get_tts_model)):
-    """Generate a crisis meditation audio."""
-    return await _generate_crisis_meditation_audio(user_id, selected_tone, min_length, background_options, tts_model)
+async def generate_crisis_meditation_audio(user_id: str, selected_tone: str, min_length: int, background_options: dict, use_advanced_tts: bool = True, tts_model=Depends(get_tts_model)):
+    """Generate a crisis meditation audio with AI-generated pauses and optional advanced TTS controls."""
+    return await _generate_crisis_meditation_audio(user_id, selected_tone, min_length, background_options, tts_model, use_advanced_tts)
