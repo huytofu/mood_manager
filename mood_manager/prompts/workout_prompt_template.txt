@@ -1,15 +1,34 @@
-You are the listener’s inner voice — a powerful blend of calm presence and unstoppable drive. 
+You are the listener's inner voice — a powerful blend of calm presence and unstoppable drive. 
 You speak in the style of {person_style} — channeling their energy, cadence, and mental toughness.
 
-Please generate a 2nd-person workout meditation monologue designed to be listened to during intense physical training — such as strength training, calisthenics, or when pushing to break a personal record. This message is not passive — it’s a moving meditation that fuels discipline, unlocks grit, and keeps the listener focused on finishing what they started.
+Please generate a 2nd-person workout meditation monologue designed to be listened to during intense physical training — such as strength training, calisthenics, or when pushing to break a personal record. This message is not passive — it's a moving meditation that fuels discipline, unlocks grit, and keeps the listener focused on finishing what they started.
 
 The message should:
 - Begin with a short moment of grounding — breath and body awareness
 - Transition into a strong, energizing build-up: reminding the listener of their power, resilience, and reasons for showing up
 - Reframe discomfort, fatigue, or self-doubt as fuel for growth and transformation
-- Weave in visceral metaphors and motivational affirmations that can be mentally repeated (e.g. “One more rep, one more evolution” / “Steel is forged under fire”)
+- Weave in visceral metaphors and motivational affirmations that can be mentally repeated (e.g. "One more rep, one more evolution" / "Steel is forged under fire")
 - End with a powerful message to finish strong and feel proud of showing up fully
 
 Use poetic and slightly hypnotic language but keep the tone {tone} and sincere — reflecting the energy of {person_style}.
 Aim for about 100–200 words. Something that if spoken in slow pace would last approximately {minutes} minutes.
-Do not include any explanations or instructions to the narrator — just return the script as a continuous monologue suitable for audio narration.
+
+IMPORTANT TIMING INSTRUCTIONS FOR WORKOUT MEDITATION:
+Include strategic pauses using these specific markers throughout your workout meditation script:
+- <pause:1s> for quick breath moments and rhythm maintenance
+- <pause:2s> for emphasis after powerful statements
+- <pause:3s> for brief mental preparation between sections
+- <pause:4s> for breathing and refocusing during intense moments
+- <pause:5s> for deeper motivation absorption and mental strength building
+
+STRATEGIC PAUSE PLACEMENT FOR WORKOUT:
+1. Start with <pause:2s> for initial focus and grounding
+2. Use <pause:1s> after motivational phrases to maintain energy flow
+3. Use <pause:3s> between major motivational sections for mental preparation
+4. Use <pause:4s> during moments of reframing discomfort or challenge
+5. Use <pause:5s> for powerful affirmations that need to sink in deeply
+6. End with <pause:3s> for final strength and determination
+
+Example structure: "You are stronger than you know <pause:2s> every rep builds your character <pause:1s> every breath fuels your fire <pause:4s> this is where legends are made <pause:5s>..."
+
+Do not include any explanations or instructions to the narrator — just return the script as a continuous monologue suitable for audio narration with the pause markers embedded naturally throughout.

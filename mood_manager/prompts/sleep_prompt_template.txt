@@ -7,7 +7,7 @@ The purpose of this message is to gently reprogram the listener's subconscious w
 2. Unconditional self-love and self-approval leading to higher self-esteem
 3. Deep trust in the abundance of life and the supportive nature of the universe
 
-The tone should be slow, soothing, and nurturing — like the voice of the listener’s higher self or inner wisdom, speaking directly to their soul.
+The tone should be slow, soothing, and nurturing — like the voice of the listener's higher self or inner wisdom, speaking directly to their soul.
 
 The message should:
 - Begin by guiding the listener into a relaxed, safe, and sleepy state (focus on breath, softening the body, and letting go)
@@ -18,4 +18,23 @@ The message should:
 
 Use poetic and slightly hypnotic language but keep the tone {tone} and sincere. 
 Aim for about 100–200 words. Something that if spoken in slow pace would last approximately {minutes} minutes
-Do not include any explanations or instructions to the narrator — just return the script as a continuous monologue suitable for audio narration.
+
+IMPORTANT TIMING INSTRUCTIONS FOR SLEEP MEDITATION:
+Include strategic pauses using these specific markers throughout your sleep meditation script:
+- <pause:2s> for gentle transitions between thoughts
+- <pause:3s> for medium pauses after affirmations to allow absorption
+- <pause:5s> for longer pauses to deepen relaxation and processing
+- <pause:8s> for extended pauses during visualization or body relaxation
+- <pause:10s> for very long pauses to allow drift toward sleep
+
+STRATEGIC PAUSE PLACEMENT FOR SLEEP:
+1. Start with <pause:3s> to create immediate calm
+2. Use <pause:2s> between gentle phrases for soothing rhythm
+3. Use <pause:5s> after each affirmation for subconscious absorption
+4. Use <pause:8s> during body relaxation and visualization segments
+5. Use <pause:10s> near the end to allow natural transition to sleep
+6. End with <pause:8s> for peaceful settling
+
+Example structure: "Let your body sink deeper <pause:3s> feeling completely safe and held <pause:5s> as you breathe in love <pause:2s> and breathe out all tension <pause:8s>..."
+
+Do not include any explanations or instructions to the narrator — just return the script as a continuous monologue suitable for audio narration with the pause markers embedded naturally throughout.

@@ -13,6 +13,7 @@ This message should be gentle, supportive, full of compassion and written with t
 The message should:
 - Begin by guiding the listener to relax and become present
 - Invite awareness of the {emotion} in the body in terms of physical sensations
+- Incorporate deep breathing cycles each of which consists of 5 second inhale, then 3 second hold, then 5 second exhale, then 3 second hold
 - Encourage compassionate acceptance of the emotion (as a repressed or misunderstood part of the self)
 - Encourage listener to relive past memories in which that emotion was first or most intensely triggered
 - Offer metaphors or visualizations that support emotional release (e.g., flowing water, light, breathing)
@@ -20,5 +21,24 @@ The message should:
 
 Use gentle and slightly hypnotic language but keep the tone {tone} and sincere. 
 Aim for about 100–200 words. Something that if spoken in slow pace would last approximately {minutes} minutes
-Do not include any explanations or instructions to the narrator — just return the script as a continuous monologue suitable for audio narration.
+
+IMPORTANT TIMING INSTRUCTIONS:
+Include strategic pauses using these specific markers throughout your meditation script:
+- <pause:1s> for brief pauses (1 second) - use after commas and between phrases
+- <pause:2s> for medium pauses (2 seconds) - use after sentences and before breathing instructions  
+- <pause:3s> for long pauses (3 seconds) - use after breathing cycles and between meditation sections
+- <pause:5s> for extended pauses (5 seconds) - use during breathing holds and deep contemplation moments
+- <pause:8s> for very long pauses (8+ seconds) - use for processing difficult emotions or memories
+
+STRATEGIC PAUSE PLACEMENT:
+1. Start with <pause:2s> to establish presence
+2. Use <pause:1s> after each comma for natural rhythm
+3. Use <pause:3s> after each complete thought or instruction
+4. Use <pause:5s> during breathing instructions (for actual breath timing)
+5. Use <pause:8s> when guiding through emotional processing or memory work
+6. End with <pause:5s> for integration
+
+Example structure: "Take a deep breath <pause:2s> and allow yourself to settle <pause:1s> into this moment. <pause:3s> As you breathe in for five counts <pause:5s> hold gently <pause:3s> then release slowly <pause:5s>..."
+
+Do not include any explanations or instructions to the narrator — just return the script as a continuous monologue suitable for audio narration with the pause markers embedded naturally throughout.
 

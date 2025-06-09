@@ -13,12 +13,31 @@ Cultivate gentle curiosity and non-judgmental awareness of whatever is present �
 The message should:
 - Begin with an invitation to pause, settle, and arrive in the present through the breath
 - Guide the listener to gently open their attention to their current environment through the senses (sounds, temperature, light, etc.)
-- Then invite awareness inward — to the body’s sensations, tensions, and natural rhythms
+- Then invite awareness inward — to the body's sensations, tensions, and natural rhythms
 - Include gentle reminders to come back to the breath whenever the mind wanders
-- Encourage an attitude of loving presence, stillness, and acceptance — “being” rather than “doing”
+- Encourage an attitude of loving presence, stillness, and acceptance — "being" rather than "doing"
 - End with a brief reflection on the beauty of the present moment and gratitude for simply being alive
 
 Use clear and slightly hypnotic language but keep the tone {tone} and sincere, 
 as if your are a wise inner voice guiding the listener back to their true home — the now.
 Aim for about 100–200 words. Something that if spoken in slow pace would last approximately {minutes} minutes
-Do not include any explanations or instructions to the narrator — just return the script as a continuous monologue suitable for audio narration.
+
+IMPORTANT TIMING INSTRUCTIONS FOR MINDFULNESS MEDITATION:
+Include strategic pauses using these specific markers throughout your mindfulness meditation script:
+- <pause:2s> for gentle awareness transitions
+- <pause:3s> for contemplative pauses after each instruction
+- <pause:5s> for deeper sensing and feeling into experiences
+- <pause:7s> for extended present-moment awareness
+- <pause:10s> for deep contemplation and being with what is
+
+STRATEGIC PAUSE PLACEMENT FOR MINDFULNESS:
+1. Start with <pause:3s> to establish present moment grounding
+2. Use <pause:2s> between sensing instructions for gentle awareness shifts
+3. Use <pause:5s> after invitations to notice (sounds, sensations, breath)
+4. Use <pause:7s> during body awareness segments for deeper sensing
+5. Use <pause:10s> for pure being/awareness without instruction
+6. End with <pause:5s> for gratitude and integration
+
+Example structure: "Notice the breath flowing naturally <pause:3s> without needing to change anything <pause:5s> simply being present with this moment <pause:7s> aware and alive <pause:10s>..."
+
+Do not include any explanations or instructions to the narrator — just return the script as a continuous monologue suitable for audio narration with the pause markers embedded naturally throughout.
