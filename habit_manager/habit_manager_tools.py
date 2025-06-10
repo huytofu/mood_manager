@@ -19,7 +19,8 @@ from utils.habit_utils import (
     _get_epic_habit_by_id,
     _get_mood_records,
     _get_completion_records,
-    _get_all_user_completions
+    _get_all_user_completions,
+    get_user_habit_limits
 )
 
 # =============================================================================
@@ -56,6 +57,7 @@ class AnalyzeUnderperformingHabitsInput(BaseModel):
     threshold: float = Field(default=0.3, description="Completion rate threshold below which habits are considered underperforming")
 
 class AnalyzeLaggingEpicProgressInput(BaseModel):
+    user_id: str = Field(..., description="User identifier")
     epic_habit_id: str = Field(..., description="Epic habit identifier")
     target_progress_rate: Optional[float] = Field(default=None, description="Expected progress rate, if None calculates from target_completion_date")
 
@@ -64,15 +66,15 @@ class AnalyzeHabitInteractionsInput(BaseModel):
     time_period: str = Field(default="monthly", description="Time period for analysis")
     interaction_type: str = Field(default="all", description="Type of interactions to detect: synchronous, antagonistic, or all")
 
-class GenerateHabitInsightsInput(BaseModel):
-    user_id: str = Field(..., description="User identifier")
-    habit_id: Optional[str] = Field(default=None, description="Specific habit ID, or None for all habits")
-    insight_type: str = Field(default="comprehensive", description="Type of insights: completion_patterns, timing_optimization, or comprehensive")
-
 class AnalyzeMoodHabitCorrelationInput(BaseModel):
     user_id: str = Field(..., description="User identifier")
     habit_id: Optional[str] = Field(default=None, description="Specific habit ID, or None for all habits")
     time_period: str = Field(default="monthly", description="Time period for analysis")
+
+class GenerateHabitInsightsInput(BaseModel):
+    user_id: str = Field(..., description="User identifier")
+    habit_id: Optional[str] = Field(default=None, description="Specific habit ID, or None for all habits")
+    insight_type: str = Field(default="comprehensive", description="Type of insights: completion_patterns, timing_optimization, or comprehensive")
 
 class RecommendMoodSupportingHabitsInput(BaseModel):
     mood_state: str = Field(..., description="Current mood state: 'stress' or 'depression'")
@@ -329,6 +331,17 @@ async def analyze_underperforming_habits(
     Returns:
     - Dict containing: underperforming_habits (List), analysis (Dict), recommendations (List)
     """
+    # Check user tier permissions
+    user_limits = get_user_habit_limits(user_id)
+    
+    if not user_limits["ai_insights"]:
+        return {
+            "success": False,
+            "error": "Advanced habit analysis requires premium plan",
+            "upgrade_message": "Upgrade to premium for AI-powered habit insights and underperformance analysis",
+            "feature_blocked": "ai_insights"
+        }
+    
     # Get all user completions for period
     all_completions = await _get_all_user_completions(user_id, time_period)
     
@@ -404,18 +417,30 @@ async def analyze_underperforming_habits(
 
 @tool("analyze_lagging_epic_progress", args_schema=AnalyzeLaggingEpicProgressInput)
 async def analyze_lagging_epic_progress(
-    epic_habit_id: str, target_progress_rate: Optional[float] = None
+    user_id: str, epic_habit_id: str, target_progress_rate: Optional[float] = None
 ) -> Dict[str, Any]:
     """
     Tool Purpose: Analyze epic habits that are behind schedule and suggest corrective actions.
     
     Args:
+    - user_id (str): User identifier
     - epic_habit_id (str): Epic habit identifier
     - target_progress_rate (Optional[float]): Expected progress rate, calculated from target date if None
     
     Returns:
     - Dict containing: epic_analysis (Dict), bottleneck_habits (List), corrective_actions (List)
     """
+    # Check user tier permissions
+    user_limits = get_user_habit_limits(user_id)
+    
+    if not user_limits["epic_progress_calculation"]:
+        return {
+            "success": False,
+            "error": "Epic progress analysis requires premium plan",
+            "upgrade_message": "Upgrade to premium for epic habit tracking and progress analysis",
+            "feature_blocked": "epic_progress_calculation"
+        }
+    
     # Get epic habit details
     epic_habit = await _get_epic_habit_by_id(epic_habit_id)
     if not epic_habit:
@@ -516,6 +541,25 @@ async def analyze_habit_interactions(
     Returns:
     - Dict containing: synchronous_pairs (List), antagonistic_pairs (List), insights (List)
     """
+    # Check user tier permissions
+    user_limits = get_user_habit_limits(user_id)
+    
+    if not user_limits["habit_interaction_analysis"]:
+        return {
+            "success": False,
+            "error": "Habit interaction analysis requires premium plan",
+            "upgrade_message": "Upgrade to premium for habit synergy and conflict detection",
+            "feature_blocked": "habit_interaction_analysis"
+        }
+    
+    if not user_limits["habit_interaction_analysis"]:
+        return {
+            "success": False,
+            "error": "Habit interaction analysis requires premium plan",
+            "upgrade_message": "Upgrade to premium for habit synergy and conflict detection",
+            "feature_blocked": "habit_interaction_analysis"
+        }
+    
     # Get all user completions
     all_completions = await _get_all_user_completions(user_id, time_period)
     
@@ -631,6 +675,17 @@ async def analyze_mood_habit_correlation(
     Returns:
     - Dict containing: correlations (Dict), insights (List), recommendations (List)
     """
+    # Check user tier permissions
+    user_limits = get_user_habit_limits(user_id)
+    
+    if not user_limits["mood_correlation"]:
+        return {
+            "success": False,
+            "error": "Mood-habit correlation analysis requires premium plan",
+            "upgrade_message": "Upgrade to premium for mood tracking and habit correlation insights",
+            "feature_blocked": "mood_correlation"
+        }
+    
     # Get mood records and habit completions for period
     mood_records = await _get_mood_records(user_id, time_period)
     
@@ -695,6 +750,17 @@ async def generate_habit_insights(
     Returns:
     - Dict containing: insights (List), patterns (Dict), recommendations (List)
     """
+    # Check user tier permissions
+    user_limits = get_user_habit_limits(user_id)
+    
+    if not user_limits["ai_insights"]:
+        return {
+            "success": False,
+            "error": "Advanced habit insights require premium plan",
+            "upgrade_message": "Upgrade to premium for AI-powered behavioral insights and pattern analysis",
+            "feature_blocked": "ai_insights"
+        }
+    
     insights = []
     patterns = {}
     recommendations = []

@@ -25,6 +25,8 @@ from utils.habit_utils import (
     TrackHabitCompletionInput,
     CalculateHabitTrendsInput,
     GenerateEpicProgressInput,
+    get_user_habit_limits,
+    check_habit_creation_limits,
 )
 from typing import List, Dict, Any, Optional
 
@@ -334,4 +336,47 @@ async def generate_epic_progress(epic_habit_id: str, time_period: str):
     Returns:
     - Dict with overall_progress, micro_habit_progress, weighted_calculation
     """
-    return await _calculate_basic_epic_progress(epic_habit_id, time_period) 
+    return await _calculate_basic_epic_progress(epic_habit_id, time_period)
+
+# =============================================================================
+# PREMIUM TIER INFORMATION ENDPOINTS
+# =============================================================================
+
+@router.get("/user_limits/{user_id}",
+        operation_id="get_user_habit_limits",
+        description='''
+        Get habit limits and capabilities based on user's subscription tier.
+        Returns limits for habit creation, analytics periods, and feature access.
+        ''',
+        response_description="User's habit limits and feature access")
+async def get_user_limits(user_id: str):
+    """
+    Get comprehensive habit limits and capabilities for the user's subscription tier.
+    
+    Args:
+    - user_id (str): User identifier
+    
+    Returns:
+    - Dict with max_active_habits, analytics capabilities, feature access, etc.
+    """
+    return get_user_habit_limits(user_id)
+
+@router.get("/creation_check/{user_id}",
+        operation_id="check_habit_creation_availability", 
+        description='''
+        Check if user can create more habits of specified type based on their tier limits.
+        Useful for frontend to show/hide creation buttons and display upgrade messages.
+        ''',
+        response_description="Creation availability with upgrade messages if needed")
+async def check_creation_limits(user_id: str, habit_type: str = "micro"):
+    """
+    Check if user can create more habits based on their subscription tier.
+    
+    Args:
+    - user_id (str): User identifier
+    - habit_type (str): "micro" or "epic" habit type
+    
+    Returns:
+    - Dict with can_create flag and upgrade messaging if needed
+    """
+    return check_habit_creation_limits(user_id, habit_type) 

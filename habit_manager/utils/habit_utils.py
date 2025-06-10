@@ -3,6 +3,78 @@ from datetime import datetime, timedelta
 import uuid
 from pydantic import BaseModel, Field
 from database.mongo_habit_manager import mongo_habit_manager
+from database.mongo_user_manager import mongo_user_manager
+
+# =============================================================================
+# PREMIUM TIER MANAGEMENT
+# =============================================================================
+
+def get_user_habit_limits(user_id: str) -> Dict[str, Any]:
+    """Get habit limits and capabilities based on user tier."""
+    is_premium = mongo_user_manager.get_user_tier(user_id) == "premium"
+    
+    if is_premium:
+        return {
+            "max_active_habits": 50,
+            "max_epic_habits": 10,
+            "analytics_period_limit": "unlimited",  # custom periods allowed
+            "advanced_scheduling": True,  # Now available for all users
+            "mood_correlation": True,
+            "ai_insights": True,
+            "habit_interaction_analysis": True,
+            "epic_habit_creation": True,
+            "epic_progress_calculation": True,  # Premium can calculate epic progress
+            "trend_analysis_days": 365,  # 1 year
+            "can_use_custom_periods": True  # Now available for all users
+        }
+    else:
+        return {
+            "max_active_habits": 10,
+            "max_epic_habits": 0,  # Free users can't create epic habits
+            "analytics_period_limit": "unlimited",  # Now available for all users
+            "advanced_scheduling": True,  # Now available for all users
+            "mood_correlation": False,  # Basic mood recording only (no correlation analysis)
+            "ai_insights": False,  # Basic insights only (no AI-generated recommendations)
+            "habit_interaction_analysis": False,  # No synergy/conflict analysis
+            "epic_habit_creation": False,
+            "epic_progress_calculation": False,  # Can't calculate progress on epics they can't create
+            "trend_analysis_days": 30,  # 1 month max
+            "can_use_custom_periods": True  # Now available for all users
+        }
+
+def check_habit_creation_limits(user_id: str, habit_type: str = "micro") -> Dict[str, Any]:
+    """Check if user can create more habits based on their tier limits."""
+    limits = get_user_habit_limits(user_id)
+    
+    if habit_type == "epic" and not limits["epic_habit_creation"]:
+        return {
+            "can_create": False,
+            "reason": "Epic habit creation requires premium plan",
+            "upgrade_message": "Upgrade to premium to create epic habits with multiple micro-habit tracking"
+        }
+    
+    # Count current active habits
+    current_habits = mongo_habit_manager.get_user_micro_habits(user_id, "active")
+    current_epics = mongo_habit_manager.get_user_epic_habits(user_id) if habit_type == "epic" else []
+    
+    if habit_type == "micro" and len(current_habits) >= limits["max_active_habits"]:
+        return {
+            "can_create": False, 
+            "reason": f"Reached maximum active habits limit ({limits['max_active_habits']})",
+            "upgrade_message": "Upgrade to premium for up to 50 active habits",
+            "current_count": len(current_habits),
+            "limit": limits["max_active_habits"]
+        }
+    elif habit_type == "epic" and len(current_epics) >= limits["max_epic_habits"]:
+        return {
+            "can_create": False,
+            "reason": f"Reached maximum epic habits limit ({limits['max_epic_habits']})", 
+            "upgrade_message": "Premium users can create up to 10 epic habits",
+            "current_count": len(current_epics),
+            "limit": limits["max_epic_habits"]
+        }
+    
+    return {"can_create": True}
 
 # =============================================================================
 # BASIC OPERATION SCHEMAS (for utils functions and FastAPI endpoints)
@@ -84,8 +156,26 @@ async def _create_micro_habit_record(
     specific_dates: Optional[List[str]] = None, daily_timing: Optional[str] = None,
     is_meditation: bool = False, meditation_audio_id: Optional[str] = None
 ) -> Dict[str, Any]:
-    """Create a new micro habit record with validation."""
+    """Create a new micro habit record with validation and premium tier checks."""
     validation_errors = []
+    
+    # Check premium tier limits first
+    limits_check = check_habit_creation_limits(user_id, "micro")
+    if not limits_check["can_create"]:
+        return {
+            "success": False,
+            "habit_id": "",
+            "schedule_generated": False,
+            "validation_errors": [limits_check["reason"]],
+            "upgrade_required": True,
+            "upgrade_message": limits_check["upgrade_message"],
+            "tier_info": limits_check
+        }
+    
+    # Get user limits for validation
+    user_limits = get_user_habit_limits(user_id)
+    
+    # Advanced scheduling is now available to all users - no validation needed
     
     # Validate meditation habit requirements
     if is_meditation and not meditation_audio_id:
@@ -160,7 +250,20 @@ async def _create_epic_habit_record(
     user_id: str, name: str, description: str, category: str, priority: int,
     target_completion_date: str, success_criteria: List[str]
 ) -> Dict[str, Any]:
-    """Create an epic habit record."""
+    """Create an epic habit record with premium tier validation."""
+    # Check premium tier limits for epic habits
+    limits_check = check_habit_creation_limits(user_id, "epic")
+    if not limits_check["can_create"]:
+        return {
+            "success": False,
+            "habit_id": "",
+            "schedule_generated": False,
+            "validation_errors": [limits_check["reason"]],
+            "upgrade_required": True,
+            "upgrade_message": limits_check["upgrade_message"],
+            "tier_info": limits_check
+        }
+    
     # Generate epic habit ID
     epic_id = f"epic_{uuid.uuid4().hex[:8]}"
     
@@ -273,7 +376,20 @@ async def _record_daily_mood(
     user_id: str, date: str, mood_score: int, is_crisis: bool = False, 
     is_depressed: bool = False, notes: Optional[str] = None
 ) -> Dict[str, Any]:
-    """Record daily mood rating with crisis/depression flags."""
+    """Record daily mood rating with crisis/depression flags and premium tier validation."""
+    user_limits = get_user_habit_limits(user_id)
+    
+    # For free users, block mood recording entirely or only allow basic recording without correlation
+    if not user_limits["mood_correlation"]:
+        return {
+            "success": False,
+            "error": "Mood recording and habit correlation requires premium plan",
+            "upgrade_message": "Upgrade to premium for mood tracking, habit correlation analysis, and crisis support features",
+            "feature_blocked": "mood_correlation",
+            "available_alternative": "Focus on habit tracking without mood data"
+        }
+    
+    # Premium users get full mood recording with correlation features
     # Create mood record
     mood_record_id = f"mood_{user_id}_{date.replace('-', '')}"
     
@@ -380,7 +496,34 @@ async def _track_habit_completion_record(
 async def _calculate_basic_habit_trends(
     habit_id: str, time_period: str, start_date: Optional[str] = None, end_date: Optional[str] = None
 ) -> Dict[str, Any]:
-    """Calculate basic habit completion trends over time period."""
+    """Calculate basic habit completion trends over time period with premium tier limits."""
+    # Get habit to find user_id for tier checking
+    habit = await _get_habit_by_id(habit_id)
+    if not habit:
+        return {"success": False, "error": f"Habit {habit_id} not found"}
+    
+    user_id = habit.get("user_id")
+    user_limits = get_user_habit_limits(user_id)
+    
+    # Custom periods are now available to all users - no validation needed
+    
+    # Limit analysis period for free users
+    if time_period == "custom" and start_date and end_date:
+        try:
+            start_dt = datetime.strptime(start_date, "%Y-%m-%d")
+            end_dt = datetime.strptime(end_date, "%Y-%m-%d")
+            days_requested = (end_dt - start_dt).days
+            
+            if days_requested > user_limits["trend_analysis_days"]:
+                return {
+                    "success": False,
+                    "error": f"Analysis period too long. Maximum {user_limits['trend_analysis_days']} days allowed for your plan",
+                    "upgrade_message": "Upgrade to premium for unlimited analysis periods",
+                    "max_days_allowed": user_limits["trend_analysis_days"]
+                }
+        except ValueError:
+            pass  # Invalid date format, let the main function handle it
+    
     # Get current streak
     current_streak = await _get_current_habit_streak(habit_id)
     # Get completion records for period
@@ -396,11 +539,23 @@ async def _calculate_basic_habit_trends(
     return overall_progress
 
 async def _calculate_basic_epic_progress(epic_habit_id: str, time_period: str) -> Dict[str, Any]:
-    """Calculate basic epic habit progress using intrinsic scores as weights."""
+    """Calculate basic epic habit progress using intrinsic scores as weights with premium tier validation."""
     # Get epic habit and its micro habits
     epic_habit = await _get_epic_habit_by_id(epic_habit_id)
     if not epic_habit:
         return {"success": False, "error": f"Epic habit {epic_habit_id} not found"}
+    
+    # Check if user can calculate epic progress (requires epic habit creation capability)
+    user_id = epic_habit.get("user_id")
+    user_limits = get_user_habit_limits(user_id)
+    
+    if not user_limits["epic_progress_calculation"]:
+        return {
+            "success": False,
+            "error": "Epic progress calculation requires premium plan",
+            "upgrade_message": "Upgrade to premium to track progress on epic habits",
+            "feature_blocked": "epic_progress_calculation"
+        }
     
     high_priority_habits = epic_habit.get("high_priority_micro_habits", [])
     low_priority_habits = epic_habit.get("low_priority_micro_habits", [])
