@@ -132,7 +132,7 @@ class MoodManagerBrain:
         self.agent_type = self._determine_and_initialize_agent(agent_type)
     
     def _determine_and_initialize_agent(self, agent_type: str) -> str:
-        """Determine which agent type to use and initialize it"""
+        """Determine which agent type to use and initialize it - LLM-powered agents only"""
         # Determine agent type based on availability
         if agent_type == "auto":
             if LANGCHAIN_AVAILABLE:
@@ -140,25 +140,23 @@ class MoodManagerBrain:
             elif SMOLAGENTS_AVAILABLE:
                 selected_type = "smolagents"
             else:
-                selected_type = "custom"
+                raise RuntimeError("No LLM-powered agent libraries available. Install langchain or smolagents.")
         elif agent_type == "langchain" and not LANGCHAIN_AVAILABLE:
-            print("LangChain not available, falling back to custom implementation")
-            selected_type = "custom"
+            raise RuntimeError("LangChain not available. Install langchain or use smolagents.")
         elif agent_type == "smolagents" and not SMOLAGENTS_AVAILABLE:
-            print("SmolagentS not available, falling back to custom implementation")
-            selected_type = "custom"
+            raise RuntimeError("SmolagentS not available. Install smolagents or use langchain.")
         else:
             selected_type = agent_type
         
-        # Initialize the selected agent
-        print(f"Initializing {selected_type} agent...")
+        # Initialize the selected agent (LLM-powered only)
+        print(f"Initializing {selected_type} mood agent...")
         
         if selected_type == "langchain":
             self._init_langchain_agent()
         elif selected_type == "smolagents":
             self._init_smolagents_agent()
         else:
-            self._init_custom_agent()
+            raise ValueError(f"Unsupported agent type: {agent_type}. Use 'langchain', 'smolagents', or 'auto'.")
         
         return selected_type
     
@@ -243,14 +241,11 @@ class MoodManagerBrain:
             self.agent_type = "custom"
             self._init_custom_agent()
     
-    def _init_custom_agent(self):
-        """Initialize simplified fallback implementation"""
-        # No LLM client needed for direct tool execution
-        print("✅ Simplified fallback agent initialized successfully")
+
     
     async def _call_llm_with_tools(self, prompt: str, request: MoodManagerRequest) -> Dict[str, Any]:
         """
-        Call LLM and execute tools based on agent type
+        Call LLM and execute tools based on agent type - LLM-powered agents only
         """
         try:
             if self.agent_type == "langchain":
@@ -258,12 +253,12 @@ class MoodManagerBrain:
             elif self.agent_type == "smolagents":
                 return await self._call_smolagents_agent(prompt, request)
             else:
-                return await self._call_custom_agent(prompt, request)
+                raise ValueError(f"Unsupported agent type: {self.agent_type}")
                 
         except Exception as e:
             return {
-                "intervention_type": "error",
-                "error": f"Agent execution error: {str(e)}",
+                "intervention_type": "error", 
+                "error": f"LLM agent execution error: {str(e)}",
                 "llm_reasoning": f"Failed to process with {self.agent_type} agent: {str(e)}",
                 "tools_used": [],
                 "steps": []
@@ -295,8 +290,7 @@ class MoodManagerBrain:
             
         except Exception as e:
             print(f"LangChain agent error: {e}")
-            # Fallback to custom implementation
-            return await self._call_custom_agent("", request)
+            raise RuntimeError(f"LangChain agent failed: {str(e)}")
     
     async def _call_smolagents_agent(self, agent_input: str, request: MoodManagerRequest) -> Dict[str, Any]:
         """Execute HuggingFace CodeAgent"""
@@ -316,159 +310,9 @@ class MoodManagerBrain:
             
         except Exception as e:
             print(f"CodeAgent error: {e}")
-            # Fallback to custom implementation  
-            return await self._call_custom_agent("", request)
+            raise RuntimeError(f"Smolagents agent failed: {str(e)}")
     
-    async def _call_custom_agent(self, prompt: str, request: MoodManagerRequest) -> Dict[str, Any]:
-        """Execute simplified fallback implementation using direct tool calls"""
-        print("Using simplified fallback agent (no LLM reasoning)")
-        
-        # Create tool mapping for easy access
-        tool_map = {tool.__name__: tool for tool in self.tools}
-        
-        # Initialize results storage
-        results = {
-            "steps": [],
-            "final_result": {},
-            "llm_reasoning": "Simplified fallback - direct tool execution without LLM reasoning",
-            "tools_used": [],
-            "agent_type": "custom_fallback"
-        }
-        
-        try:
-            # Execute tools in standard mood management sequence following React pattern
-            # 1. Plan intervention (emotional analysis comes from Master Manager via user_data)
-            intervention_plan = plan_intervention(
-                intent=request.intent,
-                context=request.context,
-                user_data=request.user_data
-            )
-            results["intervention_plan"] = intervention_plan
-            results["tools_used"].append("plan_intervention")
-            results["steps"].append({
-                "thought": "I need to plan therapeutic intervention based on Master Manager's analysis and user data",
-                "action": "plan_intervention", 
-                "input": {"intent": request.intent, "context": request.context, "user_data": request.user_data},
-                "observation": intervention_plan
-            })
-            
-            # 2. Check for crisis
-            if intervention_plan.get("is_crisis", False):
-                crisis_response = handle_crisis(
-                    user_id=request.user_id,
-                    user_data=request.user_data,
-                    context=request.context
-                )
-                results["crisis_response"] = crisis_response
-                results["intervention_type"] = "crisis"
-                results["tools_used"].append("handle_crisis")
-                results["steps"].append({
-                    "thought": "Crisis detected in intervention plan. I must activate emergency protocols immediately.",
-                    "action": "handle_crisis",
-                    "input": {"user_id": request.user_id, "user_data": request.user_data, "context": request.context},
-                    "observation": crisis_response
-                })
-                
-                # Generate final standardized response for crisis
-                final_response = final_answer(
-                    intervention_type="crisis",
-                    crisis_result=crisis_response
-                )
-                results["final_response"] = final_response
-                results["tools_used"].append("final_answer")
-                results["steps"].append({
-                    "thought": "I need to format the crisis response in a standardized way for the mood manager.",
-                    "action": "final_answer",
-                    "input": {"intervention_type": "crisis", "crisis_result": crisis_response},
-                    "observation": final_response
-                })
-            else:
-                # 3. Prepare audio parameters
-                audio_params = prepare_audio_params(
-                    user_id=request.user_id,
-                    user_data=request.user_data,
-                    context=request.context,
-                    audio_type=intervention_plan.get("audio_type", "mindfulness_meditation")
-                )
-                results["tools_used"].append("prepare_audio_params")
-                results["steps"].append({
-                    "thought": f"No crisis detected. I need to prepare audio parameters for {intervention_plan.get('audio_type')} intervention.",
-                    "action": "prepare_audio_params",
-                    "input": {"user_id": request.user_id, "user_data": request.user_data, "context": request.context, "audio_type": intervention_plan.get("audio_type")},
-                    "observation": audio_params
-                })
-                
-                # 4. Generate audio
-                audio_result = call_audio_endpoint(
-                    audio_type=intervention_plan.get("audio_type", "mindfulness_meditation"),
-                    params=audio_params
-                )
-                results["audio"] = audio_result
-                results["tools_used"].append("call_audio_endpoint")
-                results["steps"].append({
-                    "thought": "Now I will generate the therapeutic audio using the prepared parameters.",
-                    "action": "call_audio_endpoint",
-                    "input": {"audio_type": intervention_plan.get("audio_type"), "params": audio_params},
-                    "observation": audio_result
-                })
-            
-                # 5. Generate recommendations
-                recommendations = generate_recommendations(
-                    user_data=request.user_data,
-                    results=results.get("audio", None)
-                )
-                results["recommendations"] = recommendations
-                results["tools_used"].append("generate_recommendations")
-                results["steps"].append({
-                    "thought": "Finally, I need to generate personalized recommendations to help the user with immediate and follow-up actions.",
-                    "action": "generate_recommendations",
-                    "input": {"user_data": request.user_data, "results": results.get("audio", None)},
-                    "observation": recommendations
-                })
-                
-                # Generate final standardized response for standard intervention
-                final_response = final_answer(
-                    intervention_type="standard",
-                    audio_result=results.get("audio"),
-                    recommendations=recommendations
-                )
-                results["final_response"] = final_response
-                results["tools_used"].append("final_answer")
-                results["steps"].append({
-                    "thought": "I need to format the intervention response in a standardized way for the mood manager.",
-                    "action": "final_answer",
-                    "input": {"intervention_type": "standard", "audio_result": results.get("audio"), "recommendations": recommendations},
-                    "observation": final_response
-                })
-            
-            results["final_result"] = {
-                "intervention_completed": True, 
-                "method": "custom_fallback",
-                "total_tools_executed": len(results["tools_used"])
-            }
-            
-            return results
-            
-        except Exception as e:
-            # Generate final standardized response for error
-            error_response = final_answer(
-                intervention_type="error",
-                error_message=f"Fallback agent error: {str(e)}"
-            )
-            return {
-                "intervention_type": "error",
-                "error": f"Fallback agent error: {str(e)}",
-                "llm_reasoning": f"Failed to execute fallback agent: {str(e)}",
-                "tools_used": results.get("tools_used", []) + ["final_answer"],
-                "steps": results.get("steps", []) + [{
-                    "thought": "An error occurred during intervention execution. I need to format an error response.",
-                    "action": "final_answer",
-                    "input": {"intervention_type": "error", "error_message": f"Fallback agent error: {str(e)}"},
-                    "observation": error_response
-                }],
-                "final_response": error_response,
-                "agent_type": "custom_fallback"
-            }
+
 
     async def _process_request(self, request: MoodManagerRequest) -> MoodManagerResponse:
         """
