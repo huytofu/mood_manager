@@ -191,6 +191,32 @@ class UserSessionDocument(BaseModel):
         return v
 
 
+# MOOD MANAGER SCHEMAS
+
+class MoodRecordDocument(BaseModel):
+    """Schema for mood_records collection."""
+    user_id: str = Field(..., description="User identifier", min_length=1)
+    date: str = Field(..., description="Date", regex=r"^[0-9]{4}-[0-9]{2}-[0-9]{2}$")
+    mood_score: int = Field(..., description="Daily mood score", ge=1, le=10)
+    is_crisis: Optional[bool] = Field(default=False, description="Whether this was a crisis day")
+    is_depressed: Optional[bool] = Field(default=False, description="Whether user felt depressed")
+    notes: Optional[str] = Field(None, description="Mood notes", max_length=1000)
+    recorded_at: str = Field(..., description="Recording timestamp ISO string")
+
+
+class DateRecordDocument(BaseModel):
+    """Schema for dates collection (shared with habit manager)."""
+    user_id: str = Field(..., description="User identifier", min_length=1)
+    date: str = Field(..., description="Date", regex=r"^[0-9]{4}-[0-9]{2}-[0-9]{2}$")
+    habits_scheduled: Optional[List[str]] = Field(default_factory=list, description="Scheduled habit IDs")
+    habits_completed: Optional[List[str]] = Field(default_factory=list, description="Completed habit IDs")
+    mood_score: Optional[int] = Field(None, description="Daily mood score", ge=1, le=10)
+    is_crisis: Optional[bool] = Field(default=False, description="Whether this was a crisis day")
+    is_depressed: Optional[bool] = Field(default=False, description="Whether user felt depressed")
+    mood_notes: Optional[str] = Field(None, description="Mood notes")
+    created_at: str = Field(..., description="Creation timestamp ISO string")
+
+
 # VALIDATION HELPERS
 
 def validate_and_convert_to_dict(document_data: Dict, schema_class: BaseModel) -> Dict:
@@ -260,4 +286,29 @@ def validate_update_data(update_data: Dict, schema_class: BaseModel) -> Dict:
         return update_data
         
     except Exception as e:
-        raise ValueError(f"Update validation failed for {schema_class.__name__}: {e}") 
+        raise ValueError(f"Update validation failed for {schema_class.__name__}: {e}")
+
+
+def validate_mood_data(mood_data: Dict) -> Dict:
+    """
+    Special validation helper for mood recording with automatic defaults.
+    
+    Args:
+        mood_data: Raw mood data dictionary
+        
+    Returns:
+        Validated mood data with defaults applied
+    """
+    try:
+        # Add recording timestamp if not present
+        mood_data.setdefault("recorded_at", datetime.now().isoformat())
+        
+        # Ensure boolean fields have proper defaults
+        mood_data.setdefault("is_crisis", False)
+        mood_data.setdefault("is_depressed", False)
+        
+        # Validate using MoodRecordDocument schema
+        return validate_and_convert_to_dict(mood_data, MoodRecordDocument)
+        
+    except Exception as e:
+        raise ValueError(f"Mood data validation failed: {e}") 

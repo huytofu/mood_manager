@@ -42,6 +42,9 @@ from .mood_manager_tools import (
     call_cache_endpoint,
     generate_recommendations,
     handle_crisis,
+    record_mood,
+    analyze_mood_patterns_tool,
+    get_user_mood_history,
     final_answer
 )
 from .mood_manager_prompts import MOOD_MANAGER_SYSTEM_PROMPT, get_user_prompt_template, generate_tools_documentation
@@ -118,6 +121,9 @@ class MoodManagerBrain:
             call_cache_endpoint,
             generate_recommendations,
             handle_crisis,
+            record_mood,
+            analyze_mood_patterns_tool,
+            get_user_mood_history,
             final_answer
         ]
         

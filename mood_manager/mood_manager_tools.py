@@ -15,6 +15,12 @@ from routers.audio_router import (
     _generate_workout_meditation_audio,
     _generate_crisis_meditation_audio
 )
+# Import mood recording utilities
+from utils.mood_recording_utils import (
+    _record_daily_mood,
+    _get_mood_records,
+    _analyze_mood_patterns
+)
 # =============================================================================
 # TOOL SCHEMAS
 # =============================================================================
@@ -63,6 +69,24 @@ class FinalAnswerOutput(BaseModel):
     recommendations: List[str] = Field(..., description="List of actionable recommendations for the user")
     intervention_type: str = Field(..., description="Type of intervention performed: 'standard', 'crisis', or 'error'")
     error_type: Optional[str] = Field(default=None, description="Error type if intervention failed, None otherwise")
+
+class MoodRecordingInput(BaseModel):
+    user_id: str = Field(..., description="User identifier")
+    date: str = Field(..., description="Date in YYYY-MM-DD format")
+    mood_score: int = Field(..., ge=1, le=10, description="Daily mood score 1-10")
+    is_crisis: bool = Field(default=False, description="Whether user is in crisis/stress state")
+    is_depressed: bool = Field(default=False, description="Whether user is in depressed state")
+    notes: Optional[str] = Field(default=None, description="Optional mood notes")
+
+class MoodAnalysisInput(BaseModel):
+    user_id: str = Field(..., description="User identifier")
+    time_period: str = Field(default="monthly", description="Analysis period: weekly, monthly, or custom")
+    start_date: Optional[str] = Field(default=None, description="Start date for custom period")
+    end_date: Optional[str] = Field(default=None, description="End date for custom period")
+
+class MoodHistoryInput(BaseModel):
+    user_id: str = Field(..., description="User identifier")
+    limit: int = Field(default=50, description="Maximum number of mood records to retrieve", ge=1, le=200)
 
 # =============================================================================
 # MOOD MANAGER TOOLS
@@ -530,3 +554,98 @@ def final_answer(
         intervention_type=intervention_type,
         error_type=error_type
     )
+
+@tool("record_mood", args_schema=MoodRecordingInput)
+async def record_mood(
+    user_id: str, 
+    date: str, 
+    mood_score: int, 
+    is_crisis: bool = False, 
+    is_depressed: bool = False, 
+    notes: Optional[str] = None
+) -> Dict[str, Any]:
+    """
+    Tool Purpose: Record daily mood rating with crisis/depression flags. This functionality was moved from habit manager to mood manager for proper ownership.
+    
+    Args:
+    - user_id (str): User identifier
+    - date (str): Date in YYYY-MM-DD format
+    - mood_score (int): Daily mood score 1-10
+    - is_crisis (bool): Whether user is in crisis/stress state
+    - is_depressed (bool): Whether user is in depressed state
+    - notes (Optional[str]): Optional mood notes
+    
+    Returns:
+    - Dict containing: success (bool), mood_record_id (str), mood_data (Dict), 
+      crisis_trigger (bool), correlation_trigger (bool), recommendations (List[str])
+    """
+    return await _record_daily_mood(user_id, date, mood_score, is_crisis, is_depressed, notes)
+
+@tool("analyze_mood_patterns", args_schema=MoodAnalysisInput)
+async def analyze_mood_patterns_tool(
+    user_id: str, 
+    time_period: str = "monthly",
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None
+) -> Dict[str, Any]:
+    """
+    Tool Purpose: Analyze mood patterns for insights and trends to support therapeutic interventions.
+    
+    Args:
+    - user_id (str): User identifier
+    - time_period (str): Analysis period: weekly, monthly, or custom
+    - start_date (Optional[str]): Start date for custom period
+    - end_date (Optional[str]): End date for custom period
+    
+    Returns:
+    - Dict containing: success (bool), analysis_period (str), total_records (int), 
+      average_mood (float), mood_trend (str), crisis_days (int), depressed_days (int),
+      low_mood_days (int), high_mood_days (int), mood_stability (str), recommendations (List[str])
+    """
+    return await _analyze_mood_patterns(user_id, time_period)
+
+@tool("get_user_mood_history", args_schema=MoodHistoryInput)
+async def get_user_mood_history(
+    user_id: str, 
+    limit: int = 50
+) -> Dict[str, Any]:
+    """
+    Tool Purpose: Retrieve mood history records for correlation analysis and context-aware therapeutic recommendations.
+    
+    This tool allows the LLM to:
+    1. Retrieve recent mood history to understand user's emotional patterns
+    2. Correlate mood data with current user input for personalized interventions
+    3. Identify concerning trends that require immediate attention
+    4. Provide context-aware therapeutic recommendations based on historical data
+    
+    Args:
+    - user_id (str): User identifier
+    - limit (int): Maximum number of mood records to retrieve (1-200, default: 50)
+    
+    Returns:
+    - Dict containing:
+        - success (bool): Whether retrieval was successful
+        - mood_records (List[Dict]): List of mood records with date, score, crisis/depression flags, notes
+        - total_records (int): Total number of records found
+        - date_range (str): Date range of retrieved records
+        - error (Optional[str]): Error message if retrieval failed
+    
+    Use Cases:
+    - Before generating recommendations, check recent mood patterns
+    - Identify if user has recurring crisis periods needing special attention
+    - Correlate mood drops with specific time periods or notes
+    - Adjust intervention intensity based on mood history stability
+    """
+    try:
+        result = _get_mood_records(user_id=user_id, limit=limit)
+        return result
+        
+    except Exception as e:
+        print(f"Error in get_user_mood_history: {str(e)}")
+        return {
+            "success": False,
+            "mood_records": [],
+            "total_records": 0,
+            "date_range": "",
+            "error": f"Failed to retrieve mood history: {str(e)}"
+        }
