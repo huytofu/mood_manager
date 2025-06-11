@@ -272,11 +272,11 @@ async def get_available_tools():
             {
                 "name": "daily_execution_operations",
                 "category": "basic_operations",
-                "purpose": "Handle daily habit execution, mood tracking, and flexible scheduling",
+                "purpose": "Handle daily habit execution, and flexible scheduling",
                 "inputs": ["operation: str", "params: dict"],
                 "outputs": ["success: bool", "data: dict", "operation: str", "error: str"],
-                "operations": ["record_mood", "get_daily_habits", "plan_flexible_habits"],
-                "usage": "Daily workflow operations and mood coordination"
+                "operations": ["get_daily_habits", "plan_flexible_habits"],
+                "usage": "Daily workflow operations"
             },
             {
                 "name": "progress_tracking_operations",
@@ -367,7 +367,7 @@ async def get_available_tools():
                 "5. final_habit_answer → standardized output"
             ],
             "daily_execution": [
-                "1. daily_execution_operations → mood tracking, get habits",
+                "1. daily_execution_operations → get or plan habits",
                 "2. progress_tracking_operations → track completions",
                 "3. LLM generates daily optimization suggestions",
                 "4. final_habit_answer → standardized output"

@@ -112,17 +112,6 @@ class HabitCompletionDocument(BaseModel):
     recorded_at: str = Field(..., description="Recording timestamp ISO string")
 
 
-class MoodRecordDocument(BaseModel):
-    """Schema for mood_records collection."""
-    user_id: str = Field(..., description="User identifier", min_length=1)
-    date: str = Field(..., description="Mood record date", regex=r"^[0-9]{4}-[0-9]{2}-[0-9]{2}$")
-    mood_score: int = Field(..., description="Mood score", ge=1, le=10)
-    is_crisis: Optional[bool] = Field(None, description="Whether this was a crisis day")
-    is_depressed: Optional[bool] = Field(None, description="Whether user felt depressed")
-    notes: Optional[str] = Field(None, description="Mood notes", max_length=1000)
-    recorded_at: str = Field(..., description="Recording timestamp ISO string")
-
-
 class DateRecordDocument(BaseModel):
     """Schema for dates collection."""
     user_id: str = Field(..., description="User identifier", min_length=1)
@@ -281,24 +270,3 @@ def validate_completion_data(completion_data: Dict) -> Dict:
         
     except Exception as e:
         raise ValueError(f"Completion data validation failed: {e}")
-
-
-def validate_mood_data(mood_data: Dict) -> Dict:
-    """
-    Special validation helper for mood recording.
-    
-    Args:
-        mood_data: Raw mood data dictionary
-        
-    Returns:
-        Validated mood data with defaults applied
-    """
-    try:
-        # Add recording timestamp if not present
-        mood_data.setdefault("recorded_at", datetime.now().isoformat())
-        
-        # Validate using MoodRecordDocument schema
-        return validate_and_convert_to_dict(mood_data, MoodRecordDocument)
-        
-    except Exception as e:
-        raise ValueError(f"Mood data validation failed: {e}") 

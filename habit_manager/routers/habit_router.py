@@ -7,7 +7,6 @@ from utils.habit_utils import (
     _assign_micro_to_epic_record,
     # DAILY EXECUTION OPERATIONS
     _plan_flexible_habits_timing,
-    _record_daily_mood,
     _get_daily_habit_list_organized,
     # PROGRESS TRACKING OPERATIONS
     _track_habit_completion_record,
@@ -20,7 +19,6 @@ from utils.habit_utils import (
     CreateEpicHabitInput,
     AssignMicroToEpicInput,
     PlanFlexibleHabitsInput,
-    RateDailyMoodInput,
     GetDailyHabitListInput,
     TrackHabitCompletionInput,
     CalculateHabitTrendsInput,
@@ -184,42 +182,6 @@ async def plan_flexible_habits(
     - Dict with planned_habits, timing_assignments, optimization_notes
     """
     return await _plan_flexible_habits_timing(user_id, date, available_time_slots, energy_level)
-
-@router.post("/rate_daily_mood",
-        operation_id="rate_daily_mood",
-        description='''
-        Record daily mood rating with crisis/depression flags.
-        Args:
-            user_id: str (user identifier)
-            date: str (date in YYYY-MM-DD format)
-            mood_score: int (daily mood score 1-10)
-            is_crisis: bool (whether user is in crisis/stress state, default False)
-            is_depressed: bool (whether user is in depressed state, default False)
-            notes: Optional[str] (optional mood notes)
-        Returns:
-            dict with success, mood_record_id, correlation_trigger, recommendations
-        ''',
-        response_description="Mood record result with trigger flags and recommendations")
-@tool("record_daily_mood", args_schema=RateDailyMoodInput)
-async def rate_daily_mood(
-    user_id: str, date: str, mood_score: int, is_crisis: bool = False, 
-    is_depressed: bool = False, notes: Optional[str] = None
-):
-    """
-    Tool Purpose: Record daily mood rating with crisis/depression flags for habit correlation.
-    
-    Args:
-    - user_id (str): User identifier
-    - date (str): Date in YYYY-MM-DD format
-    - mood_score (int): Daily mood score 1-10
-    - is_crisis (bool): Whether user is in crisis/stress state (default False)
-    - is_depressed (bool): Whether user is in depressed state (default False)
-    - notes (Optional[str]): Optional mood notes
-    
-    Returns:
-    - Dict with success, mood_record_id, correlation_trigger, recommendations
-    """
-    return await _record_daily_mood(user_id, date, mood_score, is_crisis, is_depressed, notes)
 
 @router.get("/daily_habit_list/{user_id}/{date}",
         operation_id="get_daily_habit_list",

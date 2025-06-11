@@ -10,7 +10,6 @@ from utils.habit_utils import (
     _create_epic_habit_record,
     _assign_micro_to_epic_record,
     _plan_flexible_habits_timing,
-    _record_daily_mood,
     _get_daily_habit_list_organized,
     _track_habit_completion_record,
     _calculate_basic_habit_trends,
@@ -33,7 +32,7 @@ class MainHabitOperationInput(BaseModel):
     params: Dict[str, Any] = Field(..., description="Parameters for the habit operation")
 
 class DailyExecutionInput(BaseModel):
-    operation: str = Field(..., description="Operation name: track_completion, record_mood, get_daily_habits")
+    operation: str = Field(..., description="Operation name: track_completion, get_daily_habits, plan_flexible_habits")
     params: Dict[str, Any] = Field(..., description="Parameters for the daily execution operation")
 
 class ProgressTrackingInput(BaseModel):
@@ -152,25 +151,18 @@ async def main_habit_operations(operation: str, params: Dict[str, Any]) -> Dict[
 @tool("daily_execution_operations", args_schema=DailyExecutionInput)
 async def daily_execution_operations(operation: str, params: Dict[str, Any]) -> Dict[str, Any]:
     """
-    Tool Purpose: Execute daily habit execution operations (track completions, record mood, get daily habits).
+    Tool Purpose: Execute daily habit execution operations (track completions, get daily habits, plan flexible habits).
+    Note: Mood recording was moved to mood_manager for proper architectural separation.
     
     Args:
-    - operation (str): Operation name (record_mood, get_daily_habits, plan_flexible_habits)
+    - operation (str): Operation name (get_daily_habits, plan_flexible_habits)
     - params (Dict[str, Any]): Parameters for the daily execution operation
     
     Returns:
     - Dict containing: success (bool), data (Any), operation (str), error (str if failed)
     """
     try:
-        if operation == "record_mood":
-            result = await _record_daily_mood(
-                user_id=params.get("user_id"),
-                mood_score=params.get("mood_score"),
-                is_crisis=params.get("is_crisis", False),
-                is_depressed=params.get("is_depressed", False),
-                notes=params.get("notes", "")
-            )
-        elif operation == "get_daily_habits":
+        if operation == "get_daily_habits":
             result = await _get_daily_habit_list_organized(
                 user_id=params.get("user_id"),
                 target_date=params.get("target_date")

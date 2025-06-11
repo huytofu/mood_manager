@@ -49,7 +49,7 @@ then using the final_habit_answer tool to provide your final answer:
 
 ### Basic Operations (for habit creation/modification or daily operations):
 - Use `main_habit_operations` for creating habits and organizing them (create_micro_habit, create_epic_habit, assign_micro_to_epic)
-- Use `daily_execution_operations` for daily habit activities (record_mood, get_daily_habits, plan_flexible_habits)  
+- Use `daily_execution_operations` for daily habit activities (get_daily_habits, plan_flexible_habits)  
 - Use `progress_tracking_operations` for completion tracking and analytics (track_completion, calculate_trends, calculate_epic_progress)
 progress_tracking_operations with operation = track_completion will also return a habit's streaks information
 
@@ -160,11 +160,11 @@ Thought: Clear insights on how to accelerate epic progress. The workout habit ne
 Action: final_habit_answer
 Action Input: {"intervention_type": "habit_analysis", "analysis_result": {"epic_progress_gap": 15, "bottleneck_habit": "Daily Workout", "completion_rate": 0.45, "key_insights": ["Weekend dropout pattern", "Evening timing conflicts", "Morning sessions much more successful"]}, "recommendations": ["URGENT: Move all workouts to 6-7 AM starting this week", "Create 15-minute weekend workout alternatives", "Set up workout clothes and equipment night before", "Track morning workout wins to build momentum", "Reassess epic goal timeline in 2 weeks"]}
 
-EXAMPLE 4 - DAILY EXECUTION, PROGRESS TRACKING, AND MOOD CORRELATION:
+EXAMPLE 4 - DAILY EXECUTION AND PROGRESS TRACKING:
 ============
 User ID: user_321
 Intent: User needs daily habit planning, completion tracking, and wants to see progress trends
-User Data: {"epic_habit_id": "epic_health123", "current_habits": ["morning_routine", "workout", "journaling"], "user_text_input": "I feel stressed today, want to plan my habits around my energy, and see how I'm progressing"}
+User Data: {"epic_habit_id": "epic_health123", "current_habits": ["morning_routine", "workout", "journaling"], "user_text_input": "I have low energy today, want to plan my habits around my energy level, and see how I'm progressing"}
 Context: {"available_time_slots": ["morning", "lunch", "evening"], "energy_level": 3}
 Priority: medium
 
@@ -173,16 +173,14 @@ Action: daily_execution_operations
 Action Input: {"operation": "get_daily_habits", "params": {"user_id": "user_321", "target_date": "2024-02-15"}}
 Observation: {"success": true, "data": {"date": "2024-02-15", "fixed_timing_habits": [{"habit_id": "habit_morning123", "name": "Morning Routine", "daily_timing": "07:00"}], "flexible_habits": [{"habit_id": "habit_workout456", "name": "20-minute workout", "intrinsic_score": 3}, {"habit_id": "habit_journal789", "name": "Evening journaling", "intrinsic_score": 2}], "total_habits": 3}, "operation": "get_daily_habits"}
 
-Thought: They have 2 flexible habits to plan. Given their low energy (3/10), I'll optimize timing and record mood for correlation analysis.
+Thought: They have 2 flexible habits to plan. Given their low energy (3/10), I'll optimize timing for their current energy level.
 Action: daily_execution_operations  
 Action Input: {"operation": "plan_flexible_habits", "params": {"user_id": "user_321", "date": "2024-02-15", "available_time_slots": ["morning", "lunch", "evening"], "energy_level": 3}}
 Observation: {"success": true, "data": {"planned_habits": [{"habit_id": "habit_workout456", "name": "20-minute workout", "intrinsic_score": 3}, {"habit_id": "habit_journal789", "name": "Evening journaling", "intrinsic_score": 2}], "timing_assignments": {"habit_workout456": {"planned_time": "morning", "priority_order": 1, "energy_matched": false}, "habit_journal789": {"planned_time": "evening", "priority_order": 2, "energy_matched": true}}, "optimization_notes": ["Low energy detected - prioritize essential habits only"], "energy_level": 3, "total_habits_planned": 2}, "operation": "plan_flexible_habits"}
 
-Action: daily_execution_operations
-Action Input: {"operation": "record_mood", "params": {"user_id": "user_321", "mood_score": 4, "is_crisis": false, "is_depressed": false, "notes": "Feeling stressed about work deadline"}}
-Observation: {"success": true, "data": {"success": true, "mood_record_id": "mood_user_321_20240215", "correlation_trigger": true, "mood_data": {"record_id": "mood_user_321_20240215", "user_id": "user_321", "date": "2024-02-15", "mood_score": 4, "is_crisis": false, "is_depressed": false, "notes": "Feeling stressed about work deadline"}, "recommendations": ["Focus on basic self-care", "Use mood-boosting habits"]}, "operation": "record_mood"}
+Thought: Good planning completed. Now I'll track a completed habit which will include streak information and show overall progress.
 
-Thought: Good planning and mood tracking. Now I'll track completion which includes streak information, then check progress trends.
+Thought: Now I'll track completion which includes streak information, then check progress trends.
 Action: progress_tracking_operations
 Action Input: {"operation": "track_completion", "params": {"user_id": "user_321", "habit_id": "habit_journal789", "date": "2024-02-15", "completion_score": 2, "notes": "Shorter session due to low energy"}}
 Observation: {"success": true, "data": {"success": true, "completion_id": "comp_321_habit_journal789_20240215", "completion_record": {"completion_id": "comp_321_habit_journal789_20240215", "user_id": "user_321", "habit_id": "habit_journal789", "date": "2024-02-15", "completion_score": 2, "max_possible_score": 2, "completion_rate": 1.0}, "streak_updated": true, "trend_impact": "neutral", "score_percentage": 100.0}, "operation": "track_completion"}
@@ -198,7 +196,7 @@ Observation: {"success": true, "data": {"overall_progress": 72.5, "micro_habit_p
 
 Thought: Excellent! Journaling has 8-day streak and 92% consistency. Epic health goal at 72.5% with strong habits. Can provide comprehensive daily and progress insights.
 Action: final_habit_answer
-Action Input: {"intervention_type": "habit_analysis", "analysis_result": {"daily_optimization": {"energy_matched_habits": ["habit_journal789"], "mood_correlation_enabled": true}, "progress_insights": {"epic_progress": 72.5, "strongest_habit": {"name": "Morning Routine", "consistency": 96}, "current_streaks": {"journaling": 8, "workout": "improving_trend"}}, "stress_impact": {"mood_score": 4, "energy_level": 3}}, "recommendations": ["TODAY: Focus on journaling (matches evening energy) - skip workout due to low energy", "PROGRESS: Excellent 72% epic progress - you're ahead of schedule!", "STREAKS: Journaling streak of 8 days shows great momentum", "MOOD CORRELATION: Track how stress affects workout completion over time", "ENERGY MANAGEMENT: Plan easier habit versions for low-energy days", "CELEBRATE: Morning routine is rock solid at 96% consistency"]}
+Action Input: {"intervention_type": "habit_analysis", "analysis_result": {"daily_optimization": {"energy_matched_habits": ["habit_journal789"]}, "progress_insights": {"epic_progress": 72.5, "strongest_habit": {"name": "Morning Routine", "consistency": 96}, "current_streaks": {"journaling": 8, "workout": "improving_trend"}}, "energy_impact": {"energy_level": 3}}, "recommendations": ["TODAY: Focus on journaling (matches evening energy) - skip workout due to low energy", "PROGRESS: Excellent 72% epic progress - you're ahead of schedule!", "STREAKS: Journaling streak of 8 days shows great momentum", "ENERGY MANAGEMENT: Plan easier habit versions for low-energy days", "CELEBRATE: Morning routine is rock solid at 96% consistency", "Note: For mood tracking and correlation analysis, use the dedicated mood manager tools"]}
 
 ## HABIT PRINCIPLES
 

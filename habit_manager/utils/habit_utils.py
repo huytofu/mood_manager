@@ -116,13 +116,7 @@ class PlanFlexibleHabitsInput(BaseModel):
     available_time_slots: List[str] = Field(..., description="Available timing options")
     energy_level: Optional[int] = Field(default=5, description="Current energy level 1-10")
 
-class RateDailyMoodInput(BaseModel):
-    user_id: str = Field(..., description="User identifier") 
-    date: str = Field(..., description="Date in YYYY-MM-DD format")
-    mood_score: int = Field(..., ge=1, le=10, description="Daily mood score 1-10")
-    is_crisis: bool = Field(default=False, description="Whether user is in crisis/stress state")
-    is_depressed: bool = Field(default=False, description="Whether user is in depressed state")
-    notes: Optional[str] = Field(default=None, description="Optional mood notes")
+# RateDailyMoodInput REMOVED: Mood recording moved to mood_manager
 
 class GetDailyHabitListInput(BaseModel):
     user_id: str = Field(..., description="User identifier")
@@ -376,53 +370,6 @@ async def _plan_flexible_habits_timing(
         "optimization_notes": optimization_notes,
         "energy_level": energy_level,
         "total_habits_planned": len(timing_assignments)
-    }
-
-async def _record_daily_mood(
-    user_id: str, date: str, mood_score: int, is_crisis: bool = False, 
-    is_depressed: bool = False, notes: Optional[str] = None
-) -> Dict[str, Any]:
-    """Record daily mood rating with crisis/depression flags and premium tier validation."""
-    user_limits = get_user_habit_limits(user_id)
-    
-    # For free users, block mood recording entirely or only allow basic recording without correlation
-    if not user_limits["mood_correlation"]:
-        return {
-            "success": False,
-            "error": "Mood recording and habit correlation requires premium plan",
-            "upgrade_message": "Upgrade to premium for mood tracking, habit correlation analysis, and crisis support features",
-            "feature_blocked": "mood_correlation",
-            "available_alternative": "Focus on habit tracking without mood data"
-        }
-    
-    # Premium users get full mood recording with correlation features
-    # Create mood record
-    mood_record_id = f"mood_{user_id}_{date.replace('-', '')}"
-    
-    mood_record = {
-        "record_id": mood_record_id,
-        "user_id": user_id,
-        "date": date,
-        "mood_score": mood_score,
-        "is_crisis": is_crisis,
-        "is_depressed": is_depressed,
-        "notes": notes or ""
-    }
-    
-    # Save to MongoDB
-    mood_success = mongo_habit_manager.record_mood(mood_record)
-    if not mood_success:
-        return {"success": False, "error": "Failed to record mood in database"}
-    
-    # Determine if this should trigger correlation analysis
-    correlation_trigger = is_crisis or is_depressed or mood_score <= 3 or mood_score >= 8
-    
-    return {
-        "success": True,
-        "mood_record_id": mood_record_id,
-        "correlation_trigger": correlation_trigger,
-        "mood_data": mood_record,
-        "recommendations": await _get_mood_based_recommendations(mood_score, is_crisis, is_depressed)
     }
 
 async def _get_daily_habit_list_organized(user_id: str, date: str) -> Dict[str, Any]:

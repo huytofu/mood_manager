@@ -20,14 +20,12 @@ try:
         MicroHabitDocument,
         EpicHabitDocument,
         HabitCompletionDocument,
-        MoodRecordDocument,
         DateRecordDocument,
         validate_and_convert_to_dict,
         validate_update_data,
         validate_habit_creation_data,
         validate_epic_creation_data,
         validate_completion_data,
-        validate_mood_data
     )
     VALIDATION_AVAILABLE = True
 except ImportError:
@@ -378,7 +376,7 @@ class MongoHabitManager:
             # Apply Pydantic validation if available
             if VALIDATION_AVAILABLE:
                 try:
-                    validated_data = validate_epic_creation_data(epic_data.copy())
+                    validated_data = validate_epic_creation_data(epic_data.copy(), EpicHabitDocument)
                     print(f"✅ Pydantic validation passed for epic habit: {epic_data.get('epic_id', 'unknown')}")
                 except ValueError as e:
                     print(f"❌ Pydantic validation failed: {e}")
@@ -501,7 +499,7 @@ class MongoHabitManager:
             # Apply Pydantic validation if available
             if VALIDATION_AVAILABLE:
                 try:
-                    validated_data = validate_completion_data(completion_data.copy())
+                    validated_data = validate_completion_data(completion_data.copy(), HabitCompletionDocument)
                     print(f"✅ Pydantic validation passed for habit completion: {completion_data.get('habit_id', 'unknown')}")
                 except ValueError as e:
                     print(f"❌ Pydantic validation failed: {e}")
@@ -576,46 +574,6 @@ class MongoHabitManager:
             }}
         )
         return True
-    
-    # MOOD RECORDS COLLECTION
-    def record_mood(self, mood_data: Dict) -> bool:
-        """Record daily mood with correlation flags and validation."""
-        if not self.is_connected():
-            return False
-        
-        try:
-            # Apply Pydantic validation if available
-            if VALIDATION_AVAILABLE:
-                try:
-                    validated_data = validate_mood_data(mood_data.copy())
-                    print(f"✅ Pydantic validation passed for mood record: {mood_data.get('date', 'unknown')}")
-                except ValueError as e:
-                    print(f"❌ Pydantic validation failed: {e}")
-                    return False
-            else:
-                # Fallback: Add basic timestamp
-                validated_data = mood_data.copy()
-                validated_data["recorded_at"] = datetime.now().isoformat()
-            
-            # Use upsert for daily mood (one per day per user)
-            self.mood_records.update_one(
-                {"user_id": validated_data["user_id"], "date": validated_data["date"]},
-                {"$set": validated_data},
-                upsert=True
-            )
-            
-            # Also update the date record
-            self.create_date_record(validated_data["user_id"], validated_data["date"], {
-                "mood_score": validated_data["mood_score"],
-                "is_crisis": validated_data.get("is_crisis", False),
-                "is_depressed": validated_data.get("is_depressed", False),
-                "mood_notes": validated_data.get("notes", "")
-            })
-            
-            return True
-        except Exception as e:
-            print(f"Error recording mood: {e}")
-            return False
     
     def get_mood_records(self, user_id: str, start_date: str = None, end_date: str = None) -> List[Dict]:
         """Get mood records for user within date range."""
