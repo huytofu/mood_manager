@@ -24,13 +24,12 @@ sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..', '..', 'habit
 
 # Import shared schemas
 try:
-    from database.schemas import MoodRecordDocument, DateRecordDocument, validate_mood_data
+    from database.schemas import MoodRecordDocument, validate_mood_data
 except ImportError:
     # Fallback for when schemas aren't available
     def validate_mood_data(data: Dict) -> Dict:
         return data
     MoodRecordDocument = None
-    DateRecordDocument = None
 
 
 def _get_user_mood_limits(user_id: str) -> Dict[str, Any]:
@@ -94,7 +93,7 @@ async def _record_daily_mood(
     # Validate mood data using Pydantic if available
     try:
         if validate_mood_data:
-            mood_record = validate_mood_data(mood_record)
+            mood_record = validate_mood_data(mood_record, MoodRecordDocument)
     except Exception as e:
         print(f"Mood data validation failed, proceeding without validation: {e}")
     
