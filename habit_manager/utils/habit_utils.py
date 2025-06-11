@@ -91,6 +91,7 @@ class CreateMicroHabitInput(BaseModel):
     specific_dates: Optional[List[str]] = Field(default=None, description="For specific_dates period")
     daily_timing: Optional[str] = Field(default=None, description="Fixed time like 07:00 or after_coffee, None for flexible")
     intrinsic_score: int = Field(..., ge=1, le=4, description="Importance score 1-4, used as weight")
+    difficulty_level: str = Field(default="easy", description="Difficulty level: easy, medium, hard")
     is_meditation: bool = Field(default=False, description="Whether this is a meditation habit requiring audio asset")
     meditation_audio_id: Optional[str] = Field(default=None, description="Required if is_meditation=True")
     habit_type: str = Field(..., description="formation or breaking")
@@ -154,7 +155,7 @@ async def _create_micro_habit_record(
     user_id: str, name: str, description: str, category: str, period: str, intrinsic_score: int, 
     habit_type: str, frequency: Optional[str] = None, weekly_days: Optional[List[str]] = None,
     specific_dates: Optional[List[str]] = None, daily_timing: Optional[str] = None,
-    is_meditation: bool = False, meditation_audio_id: Optional[str] = None
+    difficulty_level: str = "easy", is_meditation: bool = False, meditation_audio_id: Optional[str] = None
 ) -> Dict[str, Any]:
     """Create a new micro habit record with validation and premium tier checks."""
     validation_errors = []
@@ -176,6 +177,10 @@ async def _create_micro_habit_record(
     user_limits = get_user_habit_limits(user_id)
     
     # Advanced scheduling is now available to all users - no validation needed
+    
+    # Validate difficulty level
+    if difficulty_level not in ["easy", "medium", "hard"]:
+        validation_errors.append("difficulty_level must be one of: easy, medium, hard")
     
     # Validate meditation habit requirements
     if is_meditation and not meditation_audio_id:
@@ -219,6 +224,7 @@ async def _create_micro_habit_record(
         "specific_dates": specific_dates,
         "daily_timing": daily_timing,
         "intrinsic_score": intrinsic_score,
+        "difficulty_level": difficulty_level,
         "habit_type": habit_type,
         "is_meditation": is_meditation,
         "assets": [meditation_audio_id] if meditation_audio_id else [],
@@ -526,6 +532,7 @@ async def _calculate_basic_habit_trends(
     
     # Get current streak
     current_streak = await _get_current_habit_streak(habit_id)
+    best_streak = await _get_best_habit_streak(habit_id)
     # Get completion records for period
     habit_progress = await _get_current_habit_trends(habit_id, time_period, start_date, end_date)
 
@@ -534,7 +541,8 @@ async def _calculate_basic_habit_trends(
         "average_score": habit_progress["average_score"],
         "trend_direction": habit_progress["trend_direction"],
         "consistency_rate": habit_progress["consistency_rate"],
-        "current_streak": current_streak
+        "current_streak": current_streak,
+        "best_streak": best_streak
     }
     return overall_progress
 
@@ -853,6 +861,11 @@ async def _get_current_habit_streak(habit_id: str) -> int:
     """Get current consecutive completion streak."""
     habit = mongo_habit_manager.get_micro_habit(habit_id)
     return habit.get("current_streak", 0) if habit else 0
+
+async def _get_best_habit_streak(habit_id: str) -> int:
+    """Get best (longest) consecutive completion streak achieved."""
+    habit = mongo_habit_manager.get_micro_habit(habit_id)
+    return habit.get("best_streak", 0) if habit else 0
 
 async def _get_all_user_completions(user_id: str, time_period: str) -> List[Dict[str, Any]]:
     """Get all habit completions for user in time period."""

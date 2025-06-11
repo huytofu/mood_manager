@@ -20,6 +20,7 @@ class MicroHabitDocument(BaseModel):
     category: str = Field(..., description="Habit category")
     period: str = Field(..., description="Habit frequency period")
     intrinsic_score: int = Field(..., description="Intrinsic motivation score", ge=1, le=4)
+    difficulty_level: str = Field(default="easy", description="Difficulty level for progressive overload")
     habit_type: str = Field(..., description="Type of habit")
     status: str = Field(default="active", description="Habit status")
     current_streak: int = Field(default=0, description="Current streak count", ge=0)
@@ -45,6 +46,13 @@ class MicroHabitDocument(BaseModel):
         valid_periods = ["daily", "weekly", "specific_dates"]
         if v not in valid_periods:
             raise ValueError(f"period must be one of: {valid_periods}")
+        return v
+    
+    @validator('difficulty_level')
+    def validate_difficulty_level(cls, v):
+        valid_difficulties = ["easy", "medium", "hard"]
+        if v not in valid_difficulties:
+            raise ValueError(f"difficulty_level must be one of: {valid_difficulties}")
         return v
     
     @validator('habit_type')

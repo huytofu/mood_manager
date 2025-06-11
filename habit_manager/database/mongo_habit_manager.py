@@ -147,6 +147,7 @@ class MongoHabitManager:
                         "category": {"bsonType": "string", "enum": ["health", "productivity", "social", "financial", "mental_health", "spiritual", "creative", "other"]},
                         "period": {"bsonType": "string", "enum": ["daily", "weekly", "specific_dates"]},
                         "intrinsic_score": {"bsonType": "int", "minimum": 1, "maximum": 4},
+                        "difficulty_level": {"bsonType": "string", "enum": ["easy", "medium", "hard"]},
                         "habit_type": {"bsonType": "string", "enum": ["formation", "breaking"]},
                         "status": {"bsonType": "string", "enum": ["active", "paused", "completed", "archived"]},
                         "current_streak": {"bsonType": "int", "minimum": 0},
