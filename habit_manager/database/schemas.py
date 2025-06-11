@@ -5,7 +5,7 @@ Pydantic models for validating MongoDB documents before database operations.
 Provides client-side validation to complement server-side MongoDB schema validation.
 """
 
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, field_validator
 from datetime import datetime
 from typing import Optional, Dict, Any, List
 
@@ -34,42 +34,42 @@ class MicroHabitDocument(BaseModel):
     priority_within_epic: Optional[str] = Field(None, description="Priority within epic habit")
     created_date: str = Field(..., description="Creation date ISO string")
     
-    @validator('category')
+    @field_validator('category')
     def validate_category(cls, v):
         valid_categories = ["health", "productivity", "social", "financial", "mental_health", "spiritual", "creative", "other"]
         if v not in valid_categories:
             raise ValueError(f"category must be one of: {valid_categories}")
         return v
     
-    @validator('period')
+    @field_validator('period')
     def validate_period(cls, v):
         valid_periods = ["daily", "weekly", "specific_dates"]
         if v not in valid_periods:
             raise ValueError(f"period must be one of: {valid_periods}")
         return v
     
-    @validator('difficulty_level')
+    @field_validator('difficulty_level')
     def validate_difficulty_level(cls, v):
         valid_difficulties = ["easy", "medium", "hard"]
         if v not in valid_difficulties:
             raise ValueError(f"difficulty_level must be one of: {valid_difficulties}")
         return v
     
-    @validator('habit_type')
+    @field_validator('habit_type')
     def validate_habit_type(cls, v):
         valid_types = ["formation", "breaking"]
         if v not in valid_types:
             raise ValueError(f"habit_type must be one of: {valid_types}")
         return v
     
-    @validator('status')
+    @field_validator('status')
     def validate_status(cls, v):
         valid_statuses = ["active", "paused", "completed", "archived"]
         if v not in valid_statuses:
             raise ValueError(f"status must be one of: {valid_statuses}")
         return v
     
-    @validator('priority_within_epic')
+    @field_validator('priority_within_epic')
     def validate_priority_within_epic(cls, v):
         if v is not None:
             valid_priorities = ["high", "low"]
@@ -93,7 +93,7 @@ class EpicHabitDocument(BaseModel):
     low_priority_micro_habits: List[str] = Field(default_factory=list, description="Low priority micro habit IDs")
     created_date: str = Field(..., description="Creation date ISO string")
     
-    @validator('category')
+    @field_validator('category')
     def validate_category(cls, v):
         valid_categories = ["health", "productivity", "social", "financial", "mental_health", "spiritual", "creative", "other"]
         if v not in valid_categories:

@@ -5,7 +5,7 @@ Pydantic models for validating MongoDB documents before database operations.
 Provides client-side validation to complement server-side MongoDB schema validation.
 """
 
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, field_validator
 from datetime import datetime
 from typing import Optional, Dict, Any, List
 
@@ -21,14 +21,14 @@ class BrainwaveAudioDocument(BaseModel):
     file_exists: bool = Field(..., description="Whether file exists")
     created_at: datetime = Field(..., description="Creation timestamp")
     
-    @validator('wave_type')
+    @field_validator('wave_type')
     def validate_wave_type(cls, v):
         valid_types = ["alpha", "beta", "gamma", "delta", "theta"]
         if v not in valid_types:
             raise ValueError(f"wave_type must be one of: {valid_types}")
         return v
     
-    @validator('volume_magnitude')
+    @field_validator('volume_magnitude')
     def validate_volume_magnitude(cls, v):
         valid_magnitudes = ["low", "medium", "high"]
         if v not in valid_magnitudes:
@@ -46,7 +46,7 @@ class MusicAudioDocument(BaseModel):
     file_exists: bool = Field(..., description="Whether file exists")
     created_at: datetime = Field(..., description="Creation timestamp")
     
-    @validator('task')
+    @field_validator('task')
     def validate_task(cls, v):
         valid_tasks = ["release", "sleep", "workout", "mindfulness", "crisis"]
         if v not in valid_tasks:
@@ -66,7 +66,7 @@ class MessageAudioDocument(BaseModel):
     file_exists: bool = Field(..., description="Whether file exists")
     created_at: datetime = Field(..., description="Creation timestamp")
     
-    @validator('task')
+    @field_validator('task')
     def validate_task(cls, v):
         valid_tasks = ["release", "sleep", "workout", "mindfulness", "crisis"]
         if v not in valid_tasks:
@@ -99,7 +99,7 @@ class FinalAudioDocument(BaseModel):
     file_exists: bool = Field(..., description="Whether file exists")
     created_at: datetime = Field(..., description="Creation timestamp")
     
-    @validator('task')
+    @field_validator('task')
     def validate_task(cls, v):
         valid_tasks = ["release", "sleep", "workout", "mindfulness", "crisis"]
         if v not in valid_tasks:
@@ -117,7 +117,7 @@ class SessionDocument(BaseModel):
     schedule_id: Optional[str] = Field(None, description="Schedule identifier")
     created_at: datetime = Field(..., description="Creation timestamp")
     
-    @validator('task')
+    @field_validator('task')
     def validate_task(cls, v):
         valid_tasks = ["release", "sleep", "workout", "mindfulness", "crisis"]
         if v not in valid_tasks:
@@ -145,13 +145,13 @@ class UserDocument(BaseModel):
     updated_at: datetime = Field(..., description="Last update timestamp")
     profile: ProfileData = Field(default_factory=ProfileData, description="User profile data")
     
-    @validator('email')
+    @field_validator('email')
     def validate_email(cls, v):
         if v is not None and '@' not in v:
             raise ValueError("email must be a valid email address")
         return v
     
-    @validator('subscription_tier')
+    @field_validator('subscription_tier')
     def validate_subscription_tier(cls, v):
         valid_tiers = ["free", "premium", "enterprise"]
         if v not in valid_tiers:
@@ -182,7 +182,7 @@ class UserSessionDocument(BaseModel):
     mood_after: Optional[int] = Field(None, description="Mood after session", ge=1, le=10)
     created_at: datetime = Field(..., description="Creation timestamp")
     
-    @validator('session_type')
+    @field_validator('session_type')
     def validate_session_type(cls, v):
         if v is not None:
             valid_types = ["meditation", "crisis", "habit_tracking", "mood_check"]
