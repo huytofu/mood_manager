@@ -14,6 +14,18 @@ from datetime import datetime, timedelta
 from typing import Optional, Dict, List
 import os
 
+# Import Pydantic validation schemas
+try:
+    from .schemas import (
+        BrainwaveAudioDocument, 
+        validate_and_convert_to_dict,
+        validate_update_data
+    )
+    VALIDATION_AVAILABLE = True
+except ImportError:
+    VALIDATION_AVAILABLE = False
+    print("⚠️ Pydantic validation schemas not available - using basic validation only")
+
 class MongoAudioManager:
     def __init__(self, connection_string: str = "mongodb://localhost:27017/"):
         self.connection_string = connection_string
@@ -51,6 +63,9 @@ class MongoAudioManager:
             
             # Create indexes for better performance
             self._create_indexes()
+            
+            # Create schema validation for collections
+            self._create_schema_validation()
             
             self.connected = True
             print("✅ Connected to MongoDB Audio Manager successfully")
@@ -105,10 +120,145 @@ class MongoAudioManager:
         except Exception as e:
             print(f"Warning: Error during index creation: {e}")
     
+    def _create_schema_validation(self):
+        """Create schema validation for MongoDB collections to ensure data integrity."""
+        try:
+            # BRAINWAVE AUDIOS Schema Validation
+            brainwave_schema = {
+                "$jsonSchema": {
+                    "bsonType": "object",
+                    "required": ["uuid_id", "user_id", "wave_type", "volume_magnitude", "audio_path"],
+                    "properties": {
+                        "uuid_id": {"bsonType": "string", "minLength": 1},
+                        "user_id": {"bsonType": "string", "minLength": 1},
+                        "wave_type": {"bsonType": "string", "enum": ["alpha", "beta", "gamma", "delta", "theta"]},
+                        "volume_magnitude": {"bsonType": "string", "enum": ["low", "medium", "high"]},
+                        "audio_path": {"bsonType": "string", "minLength": 1},
+                        "file_exists": {"bsonType": "bool"},
+                        "created_at": {"bsonType": "date"}
+                    }
+                }
+            }
+            
+            # MUSIC AUDIOS Schema Validation
+            music_schema = {
+                "$jsonSchema": {
+                    "bsonType": "object",
+                    "required": ["uuid_id", "user_id", "task", "music_style", "audio_path"],
+                    "properties": {
+                        "uuid_id": {"bsonType": "string", "minLength": 1},
+                        "user_id": {"bsonType": "string", "minLength": 1},
+                        "task": {"bsonType": "string", "enum": ["release", "sleep", "workout", "mindfulness", "crisis"]},
+                        "music_style": {"bsonType": "string", "minLength": 1, "maxLength": 100},
+                        "audio_path": {"bsonType": "string", "minLength": 1},
+                        "file_exists": {"bsonType": "bool"},
+                        "created_at": {"bsonType": "date"}
+                    }
+                }
+            }
+            
+            # MESSAGE AUDIOS Schema Validation
+            message_schema = {
+                "$jsonSchema": {
+                    "bsonType": "object",
+                    "required": ["uuid_id", "user_id", "task", "duration_sec", "selected_tone", "audio_path"],
+                    "properties": {
+                        "uuid_id": {"bsonType": "string", "minLength": 1},
+                        "user_id": {"bsonType": "string", "minLength": 1},
+                        "task": {"bsonType": "string", "enum": ["release", "sleep", "workout", "mindfulness", "crisis"]},
+                        "duration_sec": {"bsonType": "number", "minimum": 0},
+                        "selected_tone": {"bsonType": "string", "minLength": 1, "maxLength": 50},
+                        "selected_emotion": {"bsonType": ["string", "null"], "maxLength": 50},
+                        "audio_path": {"bsonType": "string", "minLength": 1},
+                        "file_exists": {"bsonType": "bool"},
+                        "created_at": {"bsonType": "date"}
+                    }
+                }
+            }
+            
+            # FINAL AUDIOS Schema Validation
+            final_schema = {
+                "$jsonSchema": {
+                    "bsonType": "object",
+                    "required": ["uuid_id", "user_id", "task", "components", "audio_path"],
+                    "properties": {
+                        "uuid_id": {"bsonType": "string", "minLength": 1},
+                        "user_id": {"bsonType": "string", "minLength": 1},
+                        "task": {"bsonType": "string", "enum": ["release", "sleep", "workout", "mindfulness", "crisis"]},
+                        "components": {
+                            "bsonType": "object",
+                            "properties": {
+                                "message_audio_id": {"bsonType": ["string", "null"]},
+                                "music_audio_id": {"bsonType": ["string", "null"]},
+                                "brainwave_audio_id": {"bsonType": ["string", "null"]}
+                            }
+                        },
+                        "component_paths": {
+                            "bsonType": "object",
+                            "properties": {
+                                "emotional_audio_path": {"bsonType": ["string", "null"]},
+                                "background_music_path": {"bsonType": ["string", "null"]},
+                                "brain_waves_path": {"bsonType": ["string", "null"]}
+                            }
+                        },
+                        "audio_path": {"bsonType": "string", "minLength": 1},
+                        "file_exists": {"bsonType": "bool"},
+                        "created_at": {"bsonType": "date"}
+                    }
+                }
+            }
+            
+            # SESSIONS Schema Validation
+            sessions_schema = {
+                "$jsonSchema": {
+                    "bsonType": "object",
+                    "required": ["session_id", "user_id", "task", "session_type", "final_audio_id"],
+                    "properties": {
+                        "session_id": {"bsonType": "string", "minLength": 1},
+                        "user_id": {"bsonType": "string", "minLength": 1},
+                        "task": {"bsonType": "string", "enum": ["release", "sleep", "workout", "mindfulness", "crisis"]},
+                        "session_type": {"bsonType": "string", "minLength": 1, "maxLength": 50},
+                        "final_audio_id": {"bsonType": "string", "minLength": 1},
+                        "schedule_id": {"bsonType": ["string", "null"]},
+                        "created_at": {"bsonType": "date"}
+                    }
+                }
+            }
+            
+            # Apply validation to collections
+            validation_configs = [
+                ("brainwave_audios", brainwave_schema),
+                ("music_audios", music_schema),
+                ("message_audios", message_schema),
+                ("final_audios", final_schema),
+                ("sessions", sessions_schema)
+            ]
+            
+            for collection_name, schema in validation_configs:
+                try:
+                    # Check if collection exists and has validation
+                    collection_info = self.db.list_collections(filter={"name": collection_name})
+                    collection_exists = len(list(collection_info)) > 0
+                    
+                    if collection_exists:
+                        # Modify existing collection validation
+                        self.db.command("collMod", collection_name, validator=schema, validationLevel="moderate")
+                        print(f"✅ Updated schema validation for {collection_name}")
+                    else:
+                        # Create collection with validation
+                        self.db.create_collection(collection_name, validator=schema, validationLevel="moderate")
+                        print(f"✅ Created {collection_name} with schema validation")
+                        
+                except Exception as e:
+                    print(f"⚠️ Could not set validation for {collection_name}: {e}")
+            
+        except Exception as e:
+            print(f"Warning: Error during schema validation setup: {e}")
+    
     # BRAINWAVE AUDIOS COLLECTION
     def store_brainwave_audio(self, user_id: str, uuid_id: str, wave_type: str, 
                              volume_magnitude: str, audio_path: str) -> bool:
-        """Store brainwave audio metadata."""
+        """Store brainwave audio metadata with validation."""
         if not self.is_connected():
             return False
         
@@ -123,6 +273,16 @@ class MongoAudioManager:
         }
         
         try:
+            # Apply Pydantic validation if available
+            if VALIDATION_AVAILABLE:
+                try:
+                    document = validate_and_convert_to_dict(document, BrainwaveAudioDocument)
+                    print(f"✅ Pydantic validation passed for brainwave audio: {uuid_id}")
+                except ValueError as e:
+                    print(f"❌ Pydantic validation failed: {e}")
+                    return False
+            
+            # Insert validated document
             self.brainwave_audios.insert_one(document)
             return True
         except Exception as e:

@@ -14,6 +14,26 @@ from datetime import datetime, timedelta
 from typing import Optional, Dict, List
 import os
 
+# Import Pydantic validation schemas
+try:
+    from .schemas import (
+        MicroHabitDocument,
+        EpicHabitDocument,
+        HabitCompletionDocument,
+        MoodRecordDocument,
+        DateRecordDocument,
+        validate_and_convert_to_dict,
+        validate_update_data,
+        validate_habit_creation_data,
+        validate_epic_creation_data,
+        validate_completion_data,
+        validate_mood_data
+    )
+    VALIDATION_AVAILABLE = True
+except ImportError:
+    VALIDATION_AVAILABLE = False
+    print("⚠️ Pydantic validation schemas not available - using basic validation only")
+
 class MongoHabitManager:
     def __init__(self, connection_string: str = "mongodb://localhost:27017/"):
         self.connection_string = connection_string
@@ -245,21 +265,32 @@ class MongoHabitManager:
     
     # MICRO HABITS COLLECTION
     def create_micro_habit(self, habit_data: Dict) -> bool:
-        """Create a new micro habit record."""
+        """Create a new micro habit record with validation."""
         if not self.is_connected():
             return False
         
-        # Add creation timestamp and default status
-        habit_data.update({
-            "created_date": datetime.now().isoformat(),
-            "status": "active",
-            "current_streak": 0,
-            "best_streak": 0,
-            "total_completions": 0
-        })
-        
         try:
-            self.micro_habits.insert_one(habit_data)
+            # Apply Pydantic validation if available
+            if VALIDATION_AVAILABLE:
+                try:
+                    validated_data = validate_habit_creation_data(habit_data.copy())
+                    print(f"✅ Pydantic validation passed for micro habit: {habit_data.get('habit_id', 'unknown')}")
+                except ValueError as e:
+                    print(f"❌ Pydantic validation failed: {e}")
+                    return False
+            else:
+                # Fallback: Add basic creation defaults
+                validated_data = habit_data.copy()
+                validated_data.update({
+                    "created_date": datetime.now().isoformat(),
+                    "status": "active",
+                    "current_streak": 0,
+                    "best_streak": 0,
+                    "total_completions": 0
+                })
+            
+            # Insert validated document
+            self.micro_habits.insert_one(validated_data)
             return True
         except Exception as e:
             print(f"Error creating micro habit: {e}")
@@ -282,14 +313,26 @@ class MongoHabitManager:
         ).sort("created_date", -1))
     
     def update_micro_habit(self, habit_id: str, updates: Dict) -> bool:
-        """Update micro habit data."""
+        """Update micro habit data with validation."""
         if not self.is_connected():
             return False
         
         try:
+            # Apply Pydantic validation if available
+            if VALIDATION_AVAILABLE:
+                try:
+                    validated_updates = validate_update_data(updates, MicroHabitDocument)
+                    print(f"✅ Pydantic validation passed for micro habit update: {habit_id}")
+                except ValueError as e:
+                    print(f"❌ Pydantic validation failed for update: {e}")
+                    return False
+            else:
+                validated_updates = updates
+            
+            # Perform update with validated data
             result = self.micro_habits.update_one(
                 {"habit_id": habit_id},
-                {"$set": updates}
+                {"$set": validated_updates}
             )
             return result.modified_count > 0
         except Exception as e:
@@ -326,20 +369,31 @@ class MongoHabitManager:
     
     # EPIC HABITS COLLECTION
     def create_epic_habit(self, epic_data: Dict) -> bool:
-        """Create a new epic habit record."""
+        """Create a new epic habit record with validation."""
         if not self.is_connected():
             return False
         
-        # Add creation timestamp and default values
-        epic_data.update({
-            "created_date": datetime.now().isoformat(),
-            "current_progress": 0.0,
-            "high_priority_micro_habits": [],
-            "low_priority_micro_habits": []
-        })
-        
         try:
-            self.epic_habits.insert_one(epic_data)
+            # Apply Pydantic validation if available
+            if VALIDATION_AVAILABLE:
+                try:
+                    validated_data = validate_epic_creation_data(epic_data.copy())
+                    print(f"✅ Pydantic validation passed for epic habit: {epic_data.get('epic_id', 'unknown')}")
+                except ValueError as e:
+                    print(f"❌ Pydantic validation failed: {e}")
+                    return False
+            else:
+                # Fallback: Add basic creation defaults
+                validated_data = epic_data.copy()
+                validated_data.update({
+                    "created_date": datetime.now().isoformat(),
+                    "current_progress": 0.0,
+                    "high_priority_micro_habits": [],
+                    "low_priority_micro_habits": []
+                })
+            
+            # Insert validated document
+            self.epic_habits.insert_one(validated_data)
             return True
         except Exception as e:
             print(f"Error creating epic habit: {e}")
@@ -381,7 +435,7 @@ class MongoHabitManager:
     
     # DATES COLLECTION (Daily tracking)
     def create_date_record(self, user_id: str, date: str, mood_data: Dict = None) -> bool:
-        """Create or update date record with mood and crisis flags."""
+        """Create or update date record with mood and crisis flags and validation."""
         if not self.is_connected():
             return False
         
@@ -397,10 +451,21 @@ class MongoHabitManager:
             date_record.update(mood_data)
         
         try:
+            # Apply Pydantic validation if available
+            if VALIDATION_AVAILABLE:
+                try:
+                    validated_data = validate_and_convert_to_dict(date_record, DateRecordDocument)
+                    print(f"✅ Pydantic validation passed for date record: {date}")
+                except ValueError as e:
+                    print(f"❌ Pydantic validation failed: {e}")
+                    return False
+            else:
+                validated_data = date_record
+            
             # Use upsert to create or update
             self.dates.update_one(
                 {"user_id": user_id, "date": date},
-                {"$set": date_record},
+                {"$set": validated_data},
                 upsert=True
             )
             return True
@@ -427,18 +492,29 @@ class MongoHabitManager:
     
     # HABIT COMPLETIONS COLLECTION
     def record_habit_completion(self, completion_data: Dict) -> bool:
-        """Record a habit completion."""
+        """Record a habit completion with validation."""
         if not self.is_connected():
             return False
         
-        completion_data["recorded_at"] = datetime.now().isoformat()
-        
         try:
+            # Apply Pydantic validation if available
+            if VALIDATION_AVAILABLE:
+                try:
+                    validated_data = validate_completion_data(completion_data.copy())
+                    print(f"✅ Pydantic validation passed for habit completion: {completion_data.get('habit_id', 'unknown')}")
+                except ValueError as e:
+                    print(f"❌ Pydantic validation failed: {e}")
+                    return False
+            else:
+                # Fallback: Add basic timestamp
+                validated_data = completion_data.copy()
+                validated_data["recorded_at"] = datetime.now().isoformat()
+            
             # Insert completion record
-            self.habit_completions.insert_one(completion_data)
+            self.habit_completions.insert_one(validated_data)
             
             # Update habit streak data
-            self._update_habit_streak(completion_data["habit_id"], completion_data["completion_score"] > 0)
+            self._update_habit_streak(validated_data["habit_id"], validated_data["completion_score"] > 0)
             
             return True
         except Exception as e:
@@ -502,26 +578,37 @@ class MongoHabitManager:
     
     # MOOD RECORDS COLLECTION
     def record_mood(self, mood_data: Dict) -> bool:
-        """Record daily mood with correlation flags."""
+        """Record daily mood with correlation flags and validation."""
         if not self.is_connected():
             return False
         
-        mood_data["recorded_at"] = datetime.now().isoformat()
-        
         try:
+            # Apply Pydantic validation if available
+            if VALIDATION_AVAILABLE:
+                try:
+                    validated_data = validate_mood_data(mood_data.copy())
+                    print(f"✅ Pydantic validation passed for mood record: {mood_data.get('date', 'unknown')}")
+                except ValueError as e:
+                    print(f"❌ Pydantic validation failed: {e}")
+                    return False
+            else:
+                # Fallback: Add basic timestamp
+                validated_data = mood_data.copy()
+                validated_data["recorded_at"] = datetime.now().isoformat()
+            
             # Use upsert for daily mood (one per day per user)
             self.mood_records.update_one(
-                {"user_id": mood_data["user_id"], "date": mood_data["date"]},
-                {"$set": mood_data},
+                {"user_id": validated_data["user_id"], "date": validated_data["date"]},
+                {"$set": validated_data},
                 upsert=True
             )
             
             # Also update the date record
-            self.create_date_record(mood_data["user_id"], mood_data["date"], {
-                "mood_score": mood_data["mood_score"],
-                "is_crisis": mood_data.get("is_crisis", False),
-                "is_depressed": mood_data.get("is_depressed", False),
-                "mood_notes": mood_data.get("notes", "")
+            self.create_date_record(validated_data["user_id"], validated_data["date"], {
+                "mood_score": validated_data["mood_score"],
+                "is_crisis": validated_data.get("is_crisis", False),
+                "is_depressed": validated_data.get("is_depressed", False),
+                "mood_notes": validated_data.get("notes", "")
             })
             
             return True
