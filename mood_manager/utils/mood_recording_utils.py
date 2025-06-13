@@ -737,16 +737,185 @@ async def _calculate_emotion_correlation(emotion1_records: List[Dict], emotion2_
 
 
 async def _analyze_notes_sentiment(notes: List[str]) -> List[str]:
-    """Basic sentiment analysis of mood/emotion notes."""
-    # Simplified sentiment analysis - in production, use proper NLP
-    positive_words = ["good", "happy", "great", "better", "calm", "peaceful", "grateful", "content"]
-    negative_words = ["bad", "sad", "awful", "worse", "anxious", "stressed", "overwhelmed", "depressed"]
+    """Advanced LLM-based analysis of mood/emotion notes for deep insights."""
+    if not notes:
+        return ["No notes available for analysis"]
+    
+    # Enhanced LLM Analysis similar to habit manager approach
+    llm_insights = await _analyze_mood_notes_with_llm(notes)
+    
+    # Fallback to basic analysis if LLM fails
+    if "error" in llm_insights:
+        return await _basic_sentiment_analysis(notes)
+    
+    # Extract insights from LLM analysis
+    insights = []
+    
+    if isinstance(llm_insights, dict):
+        # Add pattern insights
+        if "patterns" in llm_insights and isinstance(llm_insights["patterns"], list):
+            insights.extend(llm_insights["patterns"])
+        
+        # Add mood insights
+        if "mood_insights" in llm_insights:
+            insights.append(llm_insights["mood_insights"])
+        
+        # Add key learnings
+        if "key_learnings" in llm_insights and isinstance(llm_insights["key_learnings"], list):
+            insights.extend(llm_insights["key_learnings"])
+        
+        # Add progress assessment
+        if "progress_assessment" in llm_insights:
+            insights.append(f"Progress: {llm_insights['progress_assessment']}")
+    
+    return insights if insights else await _basic_sentiment_analysis(notes)
+
+
+async def _analyze_mood_notes_with_llm(notes: List[str]) -> Dict[str, Any]:
+    """Use LLM to analyze mood/emotion notes for deeper insights."""
+    try:
+        # Prepare notes content
+        notes_text = "\n".join([f"Entry {i+1}: {note}" for i, note in enumerate(notes)])
+        
+        analysis_prompt = f"""Analyze mood and emotion diary entries for patterns and insights. Respond with valid JSON only.
+
+DIARY ENTRIES:
+{notes_text}
+
+Analyze for emotional patterns, triggers, coping strategies, and progress indicators. Return JSON with:
+{{
+  "patterns": ["emotional pattern1", "behavioral pattern2"],
+  "triggers": {{"positive": ["trigger1"], "negative": ["trigger2"]}},
+  "mood_insights": "overall mood progression and correlation description",
+  "key_learnings": ["insight1", "insight2"],
+  "recommendations": ["action1", "action2"],
+  "progress_assessment": "improvement/decline/stable with description",
+  "emotional_themes": ["theme1", "theme2"],
+  "coping_strategies_observed": ["strategy1", "strategy2"],
+  "confidence_score": 8
+}}
+
+Focus on actionable therapeutic insights from emotional content."""
+        
+        # Import Hugging Face client if available
+        try:
+            from huggingface_hub import AsyncInferenceClient
+            import json
+            import os
+            
+            # Use Hugging Face Inference API
+            hf_token = os.getenv("HUGGINGFACE_API_TOKEN", os.getenv("HF_TOKEN"))
+            model_name = os.getenv("HF_MODEL", "mistralai/Mistral-7B-Instruct-v0.2")
+            
+            if not hf_token:
+                return {
+                    "error": "Hugging Face API token not found",
+                    "suggestion": "Set HUGGINGFACE_API_TOKEN or HF_TOKEN environment variable"
+                }
+            
+            client = AsyncInferenceClient(token=hf_token)
+            
+            # Format prompt for chat completion
+            messages = [
+                {"role": "system", "content": "You are an expert therapist and emotional intelligence coach. Always respond with valid JSON only, no additional text."},
+                {"role": "user", "content": analysis_prompt}
+            ]
+            
+            # Call Hugging Face model
+            response = await client.chat_completion(
+                messages=messages,
+                model=model_name,
+                max_tokens=1500,
+                temperature=0.3,
+                top_p=0.9
+            )
+            
+            # Extract response content
+            llm_response = response.choices[0].message.content.strip()
+            
+            # Clean response - remove any markdown formatting
+            if llm_response.startswith("```json"):
+                llm_response = llm_response[7:]
+            if llm_response.endswith("```"):
+                llm_response = llm_response[:-3]
+            llm_response = llm_response.strip()
+            
+            # Try to parse as JSON
+            try:
+                llm_insights = json.loads(llm_response)
+            except json.JSONDecodeError:
+                # Try to extract JSON from response if it contains other text
+                import re
+                json_match = re.search(r'\{.*\}', llm_response, re.DOTALL)
+                if json_match:
+                    try:
+                        llm_insights = json.loads(json_match.group())
+                    except json.JSONDecodeError:
+                        llm_insights = {
+                            "error": "Could not parse JSON from LLM response",
+                            "raw_response": llm_response[:500] + "..." if len(llm_response) > 500 else llm_response
+                        }
+                else:
+                    llm_insights = {
+                        "error": "LLM response was not valid JSON",
+                        "raw_response": llm_response[:500] + "..." if len(llm_response) > 500 else llm_response
+                    }
+            
+            return llm_insights
+            
+        except ImportError:
+            return {
+                "error": "LLM analysis not available - Hugging Face client not installed",
+                "suggestion": "Install huggingface-hub package for enhanced insights"
+            }
+        except Exception as llm_error:
+            error_msg = str(llm_error)
+            
+            # Provide specific error messages for common issues
+            if "rate limit" in error_msg.lower():
+                return {
+                    "error": "Hugging Face API rate limit exceeded",
+                    "suggestion": "Try again in a few minutes or upgrade your HF plan",
+                    "fallback": "Using basic sentiment analysis only"
+                }
+            elif "unauthorized" in error_msg.lower() or "401" in error_msg:
+                return {
+                    "error": "Invalid Hugging Face API token",
+                    "suggestion": "Check your HUGGINGFACE_API_TOKEN environment variable",
+                    "fallback": "Using basic sentiment analysis only"
+                }
+            elif "model" in error_msg.lower() and "not found" in error_msg.lower():
+                return {
+                    "error": f"Model {model_name} not found or not accessible",
+                    "suggestion": "Try a different model in HF_MODEL environment variable",
+                    "fallback": "Using basic sentiment analysis only"
+                }
+            else:
+                return {
+                    "error": f"LLM analysis failed: {error_msg}",
+                    "fallback": "Using basic sentiment analysis only"
+                }
+            
+    except Exception as e:
+        return {
+            "error": f"Analysis preparation failed: {str(e)}",
+            "fallback": "Using basic sentiment analysis only"
+        }
+
+
+async def _basic_sentiment_analysis(notes: List[str]) -> List[str]:
+    """Basic sentiment analysis fallback when LLM is not available."""
+    # Original simple sentiment analysis - kept as fallback
+    positive_words = ["good", "happy", "great", "better", "calm", "peaceful", "grateful", "content", "joyful", "excited", "proud", "confident"]
+    negative_words = ["bad", "sad", "awful", "worse", "anxious", "stressed", "overwhelmed", "depressed", "angry", "frustrated", "hopeless", "worried"]
+    coping_words = ["meditation", "exercise", "therapy", "breathe", "relax", "walk", "music", "friend", "family", "journal"]
     
     insights = []
     all_text = " ".join(notes).lower()
     
     positive_count = sum(1 for word in positive_words if word in all_text)
     negative_count = sum(1 for word in negative_words if word in all_text)
+    coping_count = sum(1 for word in coping_words if word in all_text)
     
     if positive_count > negative_count * 1.5:
         insights.append("Overall positive sentiment detected in your notes")
@@ -754,5 +923,11 @@ async def _analyze_notes_sentiment(notes: List[str]) -> List[str]:
         insights.append("Negative sentiment patterns found - consider focusing on self-care")
     else:
         insights.append("Mixed sentiment in notes - normal emotional complexity")
+    
+    if coping_count > 0:
+        insights.append("Positive coping strategies mentioned in your entries")
+    
+    if len(notes) >= 5:
+        insights.append("Consistent journaling practice developing - great for emotional awareness")
     
     return insights 
