@@ -4,12 +4,13 @@ import uuid
 from pydantic import BaseModel, Field, field_validator
 from database.mongo_habit_manager import mongo_habit_manager
 from database.mongo_user_manager import mongo_user_manager
+import os
 
 # =============================================================================
 # PREMIUM TIER MANAGEMENT
 # =============================================================================
 
-def get_user_habit_limits(user_id: str) -> Dict[str, Any]:
+def _get_user_habit_limits(user_id: str) -> Dict[str, Any]:
     """Get habit limits and capabilities based on user tier."""
     is_premium = mongo_user_manager.get_user_tier(user_id) == "premium"
     
@@ -44,7 +45,7 @@ def get_user_habit_limits(user_id: str) -> Dict[str, Any]:
 
 def check_habit_creation_limits(user_id: str, habit_type: str = "micro") -> Dict[str, Any]:
     """Check if user can create more habits based on their tier limits."""
-    limits = get_user_habit_limits(user_id)
+    limits = _get_user_habit_limits(user_id)
     
     if habit_type == "epic" and not limits["epic_habit_creation"]:
         return {
@@ -79,6 +80,67 @@ def check_habit_creation_limits(user_id: str, habit_type: str = "micro") -> Dict
 # =============================================================================
 # BASIC OPERATION SCHEMAS (for utils functions and FastAPI endpoints)
 # =============================================================================
+
+# NEW SCHEMAS FOR BASIC OPERATIONS
+class ModifyHabitParametersInput(BaseModel):
+    habit_id: str = Field(..., description="Habit identifier")
+    timing_type: Optional[str] = Field(default=None, description="specific_time, entire_day, or time_range")
+    daily_timing: Optional[str] = Field(default=None, description="Fixed time like 07:00 or after_coffee")
+    start_time: Optional[str] = Field(default=None, description="Start time for time_range habits (HH:MM format)")
+    end_time: Optional[str] = Field(default=None, description="End time for time_range habits (HH:MM format)")
+    difficulty_level: Optional[str] = Field(default=None, description="Difficulty level: easy, medium, hard")
+    intrinsic_score: Optional[int] = Field(default=None, ge=1, le=4, description="Importance score 1-4")
+
+    @field_validator('timing_type')
+    def validate_timing_type(cls, v):
+        if v is not None:
+            valid_timing_types = ["specific_time", "entire_day", "time_range"]
+            if v not in valid_timing_types:
+                raise ValueError(f"timing_type must be one of: {valid_timing_types}")
+        return v
+
+    @field_validator('difficulty_level')
+    def validate_difficulty_level(cls, v):
+        if v is not None:
+            valid_levels = ["easy", "medium", "hard"]
+            if v not in valid_levels:
+                raise ValueError(f"difficulty_level must be one of: {valid_levels}")
+        return v
+
+class PauseResumeHabitInput(BaseModel):
+    habit_id: str = Field(..., description="Habit identifier")
+    action: str = Field(..., description="pause or resume")
+    reason: Optional[str] = Field(default=None, description="Reason for pausing/resuming")
+    pause_until: Optional[str] = Field(default=None, description="Resume date for temporary pause (YYYY-MM-DD)")
+
+    @field_validator('action')
+    def validate_action(cls, v):
+        valid_actions = ["pause", "resume"]
+        if v not in valid_actions:
+            raise ValueError(f"action must be one of: {valid_actions}")
+        return v
+
+class AddHabitNoteInput(BaseModel):
+    habit_id: str = Field(..., description="Habit identifier")
+    date: str = Field(..., description="Date for the note in YYYY-MM-DD format")
+    note_type: str = Field(..., description="trigger, difficulty, learning, reflection, or general")
+    content: str = Field(..., description="Note content - thoughts, learnings, triggers faced, etc.")
+    mood_context: Optional[int] = Field(default=None, ge=1, le=10, description="Mood score at time of note")
+    tags: Optional[List[str]] = Field(default=None, description="Tags for categorizing notes")
+
+    @field_validator('note_type')
+    def validate_note_type(cls, v):
+        valid_types = ["trigger", "difficulty", "learning", "reflection", "general"]
+        if v not in valid_types:
+            raise ValueError(f"note_type must be one of: {valid_types}")
+        return v
+
+class GetHabitNotesInput(BaseModel):
+    habit_id: str = Field(..., description="Habit identifier")
+    start_date: Optional[str] = Field(default=None, description="Start date for notes query (YYYY-MM-DD)")
+    end_date: Optional[str] = Field(default=None, description="End date for notes query (YYYY-MM-DD)")
+    note_type: Optional[str] = Field(default=None, description="Filter by note type")
+    limit: Optional[int] = Field(default=50, description="Maximum number of notes to return")
 
 # HABIT CREATION SCHEMAS
 class CreateMicroHabitInput(BaseModel):
@@ -210,7 +272,7 @@ async def _create_micro_habit_record(
         }
     
     # Get user limits for validation
-    user_limits = get_user_habit_limits(user_id)
+    user_limits = _get_user_habit_limits(user_id)
     
     # Advanced scheduling is now available to all users - no validation needed
     
@@ -876,7 +938,7 @@ async def _calculate_basic_epic_progress(epic_habit_id: str, time_period: str) -
         return {"success": False, "error": f"Epic habit {epic_habit_id} not found"}
     
     user_id = epic_habit.get("user_id")
-    user_limits = get_user_habit_limits(user_id)
+    user_limits = _get_user_habit_limits(user_id)
     
     if not user_limits["epic_progress_calculation"]:
         return {
@@ -1316,16 +1378,475 @@ async def _get_mood_records(user_id: str, time_period: str) -> List[Dict[str, An
     return mongo_habit_manager.get_mood_records(user_id, str(start_date), str(end_date))
 
 async def _get_mood_based_recommendations(mood_score: int, is_crisis: bool, is_depressed: bool) -> List[str]:
-    """Get recommendations based on mood rating."""
+    """Get habit recommendations based on mood state."""
     recommendations = []
     
     if is_crisis:
-        recommendations.extend(["Seek immediate support", "Use crisis meditation audio"])
+        recommendations = [
+            "Focus on breathing exercises",
+            "Take a short walk outside", 
+            "Call someone you trust",
+            "Practice grounding techniques"
+        ]
     elif is_depressed:
-        recommendations.extend(["Consider gentle movement", "Practice self-compassion"])
+        recommendations = [
+            "Start with one small habit",
+            "Focus on self-care routines",
+            "Gentle movement or stretching",
+            "Maintain basic hygiene habits"
+        ]
     elif mood_score <= 3:
-        recommendations.extend(["Focus on basic self-care", "Use mood-boosting habits"])
+        recommendations = [
+            "Keep habits simple today",
+            "Focus on foundational habits",
+            "Practice self-compassion",
+            "Consider rest and recovery"
+        ]
     elif mood_score >= 8:
-        recommendations.extend(["Great day for challenging habits", "Build on positive momentum"])
+        recommendations = [
+            "Great day for challenging habits",
+            "Consider starting new routines",
+            "Push comfort zones safely",
+            "Build momentum for tomorrow"
+        ]
+    else:
+        recommendations = [
+            "Stick to your regular routine",
+            "Balance effort with rest",
+            "Focus on consistency",
+            "Listen to your energy levels"
+        ]
     
     return recommendations 
+
+# =============================================================================
+# NEW BASIC OPERATIONS UTILS
+# =============================================================================
+
+async def _modify_habit_parameters(
+    habit_id: str, timing_type: Optional[str] = None, daily_timing: Optional[str] = None,
+    start_time: Optional[str] = None, end_time: Optional[str] = None,
+    difficulty_level: Optional[str] = None, intrinsic_score: Optional[int] = None
+) -> Dict[str, Any]:
+    """Modify habit timing, difficulty, and importance parameters."""
+    try:
+        # Get current habit
+        habit = await _get_habit_by_id(habit_id)
+        if not habit:
+            return {"success": False, "error": "Habit not found"}
+        
+        # Validate timing parameters
+        if timing_type == "time_range" and (not start_time or not end_time):
+            return {"success": False, "error": "start_time and end_time required for time_range timing"}
+        
+        if timing_type == "specific_time" and not daily_timing:
+            return {"success": False, "error": "daily_timing required for specific_time timing"}
+        
+        # Build update document
+        update_data = {}
+        if timing_type is not None:
+            update_data["timing_type"] = timing_type
+        if daily_timing is not None:
+            update_data["daily_timing"] = daily_timing
+        if start_time is not None:
+            update_data["start_time"] = start_time
+        if end_time is not None:
+            update_data["end_time"] = end_time
+        if difficulty_level is not None:
+            update_data["difficulty_level"] = difficulty_level
+        if intrinsic_score is not None:
+            update_data["intrinsic_score"] = intrinsic_score
+        
+        update_data["last_modified"] = datetime.now().isoformat()
+        
+        # Update in database
+        result = mongo_habit_manager.update_habit_parameters(habit_id, update_data)
+        
+        if result["success"]:
+            return {
+                "success": True,
+                "message": "Habit parameters updated successfully",
+                "modified_fields": list(update_data.keys()),
+                "habit_id": habit_id
+            }
+        else:
+            return {"success": False, "error": result.get("error", "Failed to update habit")}
+            
+    except Exception as e:
+        return {"success": False, "error": f"Error modifying habit parameters: {str(e)}"}
+
+async def _pause_resume_habit(
+    habit_id: str, action: str, reason: Optional[str] = None, pause_until: Optional[str] = None
+) -> Dict[str, Any]:
+    """Pause or resume a habit with optional temporary pause until date."""
+    try:
+        # Get current habit
+        habit = await _get_habit_by_id(habit_id)
+        if not habit:
+            return {"success": False, "error": "Habit not found"}
+        
+        current_status = habit.get("status", "active")
+        
+        if action == "pause":
+            if current_status == "paused":
+                return {"success": False, "error": "Habit is already paused"}
+            
+            update_data = {
+                "status": "paused",
+                "pause_reason": reason,
+                "paused_at": datetime.now().isoformat(),
+                "pause_until": pause_until,
+                "last_modified": datetime.now().isoformat()
+            }
+            message = f"Habit paused successfully"
+            if pause_until:
+                message += f" until {pause_until}"
+                
+        elif action == "resume":
+            if current_status != "paused":
+                return {"success": False, "error": "Habit is not currently paused"}
+            
+            update_data = {
+                "status": "active",
+                "resume_reason": reason,
+                "resumed_at": datetime.now().isoformat(),
+                "pause_reason": None,
+                "pause_until": None,
+                "last_modified": datetime.now().isoformat()
+            }
+            message = "Habit resumed successfully"
+        
+        # Update in database
+        result = mongo_habit_manager.update_habit_status(habit_id, update_data)
+        
+        if result["success"]:
+            return {
+                "success": True,
+                "message": message,
+                "action": action,
+                "habit_id": habit_id,
+                "new_status": update_data["status"]
+            }
+        else:
+            return {"success": False, "error": result.get("error", f"Failed to {action} habit")}
+            
+    except Exception as e:
+        return {"success": False, "error": f"Error {action}ing habit: {str(e)}"}
+
+async def _add_habit_note(
+    habit_id: str, date: str, note_type: str, content: str,
+    mood_context: Optional[int] = None, tags: Optional[List[str]] = None
+) -> Dict[str, Any]:
+    """Add a note/diary entry for a habit on a specific date."""
+    try:
+        # Validate habit exists
+        habit = await _get_habit_by_id(habit_id)
+        if not habit:
+            return {"success": False, "error": "Habit not found"}
+        
+        # Validate date format
+        try:
+            datetime.strptime(date, "%Y-%m-%d")
+        except ValueError:
+            return {"success": False, "error": "Invalid date format. Use YYYY-MM-DD"}
+        
+        # Create note record
+        note_record = {
+            "note_id": str(uuid.uuid4()),
+            "habit_id": habit_id,
+            "user_id": habit["user_id"],
+            "date": date,
+            "note_type": note_type,
+            "content": content,
+            "mood_context": mood_context,
+            "tags": tags or [],
+            "created_at": datetime.now().isoformat(),
+            "last_modified": datetime.now().isoformat()
+        }
+        
+        # Save to database
+        result = mongo_habit_manager.add_habit_note(note_record)
+        
+        if result["success"]:
+            return {
+                "success": True,
+                "message": "Habit note added successfully",
+                "note_id": note_record["note_id"],
+                "habit_id": habit_id,
+                "date": date,
+                "note_type": note_type
+            }
+        else:
+            return {"success": False, "error": result.get("error", "Failed to add habit note")}
+            
+    except Exception as e:
+        return {"success": False, "error": f"Error adding habit note: {str(e)}"}
+
+async def _get_habit_notes(
+    habit_id: str, start_date: Optional[str] = None, end_date: Optional[str] = None,
+    note_type: Optional[str] = None, limit: int = 50
+) -> Dict[str, Any]:
+    """Get habit notes with optional filtering by date range and note type."""
+    try:
+        # Validate habit exists
+        habit = await _get_habit_by_id(habit_id)
+        if not habit:
+            return {"success": False, "error": "Habit not found"}
+        
+        # Validate date formats if provided
+        if start_date:
+            try:
+                datetime.strptime(start_date, "%Y-%m-%d")
+            except ValueError:
+                return {"success": False, "error": "Invalid start_date format. Use YYYY-MM-DD"}
+        
+        if end_date:
+            try:
+                datetime.strptime(end_date, "%Y-%m-%d")
+            except ValueError:
+                return {"success": False, "error": "Invalid end_date format. Use YYYY-MM-DD"}
+        
+        # Build query filters
+        filters = {
+            "habit_id": habit_id,
+            "start_date": start_date,
+            "end_date": end_date,
+            "note_type": note_type,
+            "limit": limit
+        }
+        
+        # Get notes from database
+        result = mongo_habit_manager.get_habit_notes(filters)
+        
+        if result["success"]:
+            notes = result["notes"]
+            return {
+                "success": True,
+                "notes": notes,
+                "total_count": len(notes),
+                "habit_id": habit_id,
+                "filters_applied": {k: v for k, v in filters.items() if v is not None}
+            }
+        else:
+            return {"success": False, "error": result.get("error", "Failed to retrieve habit notes")}
+            
+    except Exception as e:
+        return {"success": False, "error": f"Error retrieving habit notes: {str(e)}"}
+
+async def _get_habit_insights_from_notes(habit_id: str, days: int = 30) -> Dict[str, Any]:
+    """Analyze habit notes to provide insights about patterns and triggers."""
+    try:
+        # Get recent notes
+        end_date = datetime.now().strftime("%Y-%m-%d")
+        start_date = (datetime.now() - timedelta(days=days)).strftime("%Y-%m-%d")
+        
+        notes_result = await _get_habit_notes(habit_id, start_date, end_date)
+        if not notes_result["success"]:
+            return notes_result
+        
+        notes = notes_result["notes"]
+        
+        if not notes:
+            return {
+                "success": True,
+                "insights": {
+                    "total_notes": 0,
+                    "message": "No notes found for analysis period"
+                }
+            }
+        
+        # Basic Statistical Analysis
+        note_type_counts = {}
+        tag_counts = {}
+        mood_scores = []
+        
+        for note in notes:
+            # Count note types
+            note_type = note.get("note_type", "general")
+            note_type_counts[note_type] = note_type_counts.get(note_type, 0) + 1
+            
+            # Count tags
+            for tag in note.get("tags", []):
+                tag_counts[tag] = tag_counts.get(tag, 0) + 1
+            
+            # Collect mood scores
+            if note.get("mood_context"):
+                mood_scores.append(note["mood_context"])
+        
+        # Prepare content for LLM analysis
+        notes_content = []
+        for note in notes:
+            note_text = f"Date: {note.get('date', 'Unknown')}\n"
+            note_text += f"Type: {note.get('note_type', 'general')}\n"
+            note_text += f"Content: {note.get('content', '')}\n"
+            if note.get('mood_context'):
+                note_text += f"Mood: {note.get('mood_context')}/10\n"
+            if note.get('tags'):
+                note_text += f"Tags: {', '.join(note.get('tags', []))}\n"
+            note_text += "---"
+            notes_content.append(note_text)
+        
+        # Enhanced LLM Analysis
+        llm_insights = await _analyze_notes_with_llm(notes_content, habit_id, days)
+        
+        # Calculate basic insights
+        basic_insights = {
+            "total_notes": len(notes),
+            "analysis_period_days": days,
+            "note_type_breakdown": note_type_counts,
+            "common_tags": dict(sorted(tag_counts.items(), key=lambda x: x[1], reverse=True)[:5]),
+            "mood_analysis": {
+                "average_mood": round(sum(mood_scores) / len(mood_scores), 1) if mood_scores else None,
+                "mood_range": {"min": min(mood_scores), "max": max(mood_scores)} if mood_scores else None,
+                "total_mood_entries": len(mood_scores)
+            }
+        }
+        
+        # Combine basic stats with LLM insights
+        combined_insights = {
+            **basic_insights,
+            "llm_analysis": llm_insights
+        }
+        
+        return {
+            "success": True,
+            "insights": combined_insights,
+            "habit_id": habit_id
+        }
+        
+    except Exception as e:
+        return {"success": False, "error": f"Error analyzing habit notes: {str(e)}"}
+
+
+async def _analyze_notes_with_llm(notes_content: List[str], habit_id: str, days: int) -> Dict[str, Any]:
+    """Use LLM to analyze habit notes for deeper insights."""
+    try:
+        # Get habit info for context
+        habit = await _get_habit_by_id(habit_id)
+        habit_name = habit.get("name", "Unknown") if habit else "Unknown"
+        habit_type = habit.get("habit_type", "formation") if habit else "formation"
+        
+        # Prepare the prompt for LLM analysis
+        notes_text = "\n".join(notes_content)
+        
+        analysis_prompt = f"""Analyze habit notes for "{habit_name}" ({habit_type} habit) over {days} days. Respond with valid JSON only.
+
+NOTES:
+{notes_text}
+
+Analyze for patterns, triggers, mood correlations, and progress. Return JSON with:
+{{
+  "patterns": ["pattern1", "pattern2"],
+  "triggers": {{"positive": ["trigger1"], "negative": ["trigger2"]}},
+  "mood_insights": "mood correlation description",
+  "key_learnings": ["learning1", "learning2"],
+  "recommendations": ["action1", "action2"],
+  "progress_assessment": "improvement/decline/stable description",
+  "confidence_score": 7
+}}
+
+Focus on actionable insights from the note content."""
+        
+        # Import Hugging Face client if available
+        try:
+            from huggingface_hub import AsyncInferenceClient
+            import json
+            
+            # Use Hugging Face Inference API
+            hf_token = os.getenv("HUGGINGFACE_API_TOKEN", os.getenv("HF_TOKEN"))
+            model_name = os.getenv("HF_MODEL", "mistralai/Mistral-7B-Instruct-v0.2")
+            
+            if not hf_token:
+                return {
+                    "error": "Hugging Face API token not found",
+                    "suggestion": "Set HUGGINGFACE_API_TOKEN or HF_TOKEN environment variable"
+                }
+            
+            client = AsyncInferenceClient(token=hf_token)
+            
+            # Format prompt for chat completion
+            messages = [
+                {"role": "system", "content": "You are an expert habit coach and behavioral analyst. Always respond with valid JSON only, no additional text."},
+                {"role": "user", "content": analysis_prompt}
+            ]
+            
+            # Call Hugging Face model
+            response = await client.chat_completion(
+                messages=messages,
+                model=model_name,
+                max_tokens=1200,
+                temperature=0.3,
+                top_p=0.9
+            )
+            
+            # Extract response content
+            llm_response = response.choices[0].message.content.strip()
+            
+            # Clean response - remove any markdown formatting
+            if llm_response.startswith("```json"):
+                llm_response = llm_response[7:]
+            if llm_response.endswith("```"):
+                llm_response = llm_response[:-3]
+            llm_response = llm_response.strip()
+            
+            # Try to parse as JSON
+            try:
+                llm_insights = json.loads(llm_response)
+            except json.JSONDecodeError:
+                # Try to extract JSON from response if it contains other text
+                import re
+                json_match = re.search(r'\{.*\}', llm_response, re.DOTALL)
+                if json_match:
+                    try:
+                        llm_insights = json.loads(json_match.group())
+                    except json.JSONDecodeError:
+                        llm_insights = {
+                            "error": "Could not parse JSON from LLM response",
+                            "raw_response": llm_response[:500] + "..." if len(llm_response) > 500 else llm_response
+                        }
+                else:
+                    llm_insights = {
+                        "error": "LLM response was not valid JSON",
+                        "raw_response": llm_response[:500] + "..." if len(llm_response) > 500 else llm_response
+                    }
+            
+            return llm_insights
+            
+        except ImportError:
+            return {
+                "error": "LLM analysis not available - Hugging Face client not installed",
+                "suggestion": "Install huggingface-hub package for enhanced insights"
+            }
+        except Exception as llm_error:
+            error_msg = str(llm_error)
+            
+            # Provide specific error messages for common issues
+            if "rate limit" in error_msg.lower():
+                return {
+                    "error": "Hugging Face API rate limit exceeded",
+                    "suggestion": "Try again in a few minutes or upgrade your HF plan",
+                    "fallback": "Using basic statistical analysis only"
+                }
+            elif "unauthorized" in error_msg.lower() or "401" in error_msg:
+                return {
+                    "error": "Invalid Hugging Face API token",
+                    "suggestion": "Check your HUGGINGFACE_API_TOKEN environment variable",
+                    "fallback": "Using basic statistical analysis only"
+                }
+            elif "model" in error_msg.lower() and "not found" in error_msg.lower():
+                return {
+                    "error": f"Model {model_name} not found or not accessible",
+                    "suggestion": "Try a different model in HF_MODEL environment variable",
+                    "fallback": "Using basic statistical analysis only"
+                }
+            else:
+                return {
+                    "error": f"LLM analysis failed: {error_msg}",
+                    "fallback": "Using basic statistical analysis only"
+                }
+            
+    except Exception as e:
+        return {
+            "error": f"Analysis preparation failed: {str(e)}",
+            "fallback": "Using basic statistical analysis only"
+        }

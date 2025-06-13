@@ -1,30 +1,42 @@
 from fastapi import APIRouter, HTTPException
 from langchain_core.tools import tool
-from utils.habit_utils import (
-    # CRUD OPERATIONS
+# Import core operations and schemas
+from utils.habit_core import (
     _create_micro_habit_record,
     _create_epic_habit_record,
     _assign_micro_to_epic_record,
-    # DAILY EXECUTION OPERATIONS
-    _plan_flexible_habits_timing,
-    _get_daily_habit_list_organized,
-    # PROGRESS TRACKING OPERATIONS
-    _track_habit_completion_record,
-    _calculate_basic_habit_trends,
-    _calculate_basic_epic_progress,
-)
-# Import schemas from utils
-from utils.habit_utils import (
+    _modify_habit_parameters,
+    _pause_resume_habit,
+    _add_habit_note,
+    _get_habit_notes,
+    _get_user_habit_limits,
+    check_habit_creation_limits,
     CreateMicroHabitInput,
     CreateEpicHabitInput,
     AssignMicroToEpicInput,
+    ModifyHabitParametersInput,
+    PauseResumeHabitInput,
+    AddHabitNoteInput,
+    GetHabitNotesInput,
+)
+
+# Import execution operations and schemas
+from utils.habit_execution import (
+    _plan_flexible_habits_timing,
+    _get_daily_habit_list_organized,
+    _track_habit_completion_record,
     PlanFlexibleHabitsInput,
     GetDailyHabitListInput,
     TrackHabitCompletionInput,
+)
+
+# Import analytics operations and schemas
+from utils.habit_analytics import (
+    _calculate_basic_habit_trends,
+    _calculate_basic_epic_progress,
+    _get_habit_insights_from_notes,
     CalculateHabitTrendsInput,
     GenerateEpicProgressInput,
-    get_user_habit_limits,
-    check_habit_creation_limits,
 )
 from typing import List, Dict, Any, Optional
 
@@ -305,7 +317,7 @@ async def generate_epic_progress(epic_habit_id: str, time_period: str):
 # =============================================================================
 
 @router.get("/user_limits/{user_id}",
-        operation_id="get_user_habit_limits",
+        operation_id="_get_user_habit_limits",
         description='''
         Get habit limits and capabilities based on user's subscription tier.
         Returns limits for habit creation, analytics periods, and feature access.
@@ -321,7 +333,7 @@ async def get_user_limits(user_id: str):
     Returns:
     - Dict with max_active_habits, analytics capabilities, feature access, etc.
     """
-    return get_user_habit_limits(user_id)
+    return _get_user_habit_limits(user_id)
 
 @router.get("/creation_check/{user_id}",
         operation_id="check_habit_creation_availability", 
@@ -331,14 +343,176 @@ async def get_user_limits(user_id: str):
         ''',
         response_description="Creation availability with upgrade messages if needed")
 async def check_creation_limits(user_id: str, habit_type: str = "micro"):
+    """Check if user can create more habits based on tier limits"""
+    return check_habit_creation_limits(user_id, habit_type)
+
+# =============================================================================
+# NEW BASIC OPERATIONS ENDPOINTS
+# =============================================================================
+
+@router.patch("/modify_habit_parameters",
+        operation_id="modify_habit_parameters",
+        description='''
+        Modify habit timing, difficulty, and importance parameters.
+        Args:
+            habit_id: str (habit identifier)
+            timing_type: Optional[str] (specific_time, entire_day, or time_range)
+            daily_timing: Optional[str] (fixed time like 07:00 or after_coffee)
+            start_time: Optional[str] (start time for time_range habits HH:MM)
+            end_time: Optional[str] (end time for time_range habits HH:MM)
+            difficulty_level: Optional[str] (easy, medium, hard)
+            intrinsic_score: Optional[int] (importance score 1-4)
+        Returns:
+            dict with success, modified_fields, habit_id
+        ''',
+        response_description="Parameter modification result with updated fields")
+@tool("modify_habit_parameters", args_schema=ModifyHabitParametersInput)
+async def modify_habit_parameters(
+    habit_id: str, timing_type: Optional[str] = None, daily_timing: Optional[str] = None,
+    start_time: Optional[str] = None, end_time: Optional[str] = None,
+    difficulty_level: Optional[str] = None, intrinsic_score: Optional[int] = None
+):
     """
-    Check if user can create more habits based on their subscription tier.
+    Tool Purpose: Modify habit timing, difficulty, and importance parameters.
     
     Args:
-    - user_id (str): User identifier
-    - habit_type (str): "micro" or "epic" habit type
+    - habit_id (str): Habit identifier
+    - timing_type (Optional[str]): specific_time, entire_day, or time_range
+    - daily_timing (Optional[str]): Fixed time like 07:00 or after_coffee
+    - start_time (Optional[str]): Start time for time_range habits (HH:MM format)
+    - end_time (Optional[str]): End time for time_range habits (HH:MM format)
+    - difficulty_level (Optional[str]): Difficulty level (easy, medium, hard)
+    - intrinsic_score (Optional[int]): Importance score 1-4
     
     Returns:
-    - Dict with can_create flag and upgrade messaging if needed
+    - Dict with success, modified_fields, habit_id
     """
-    return check_habit_creation_limits(user_id, habit_type) 
+    return await _modify_habit_parameters(
+        habit_id, timing_type, daily_timing, start_time, end_time, difficulty_level, intrinsic_score
+    )
+
+@router.patch("/pause_resume_habit",
+        operation_id="pause_resume_habit",
+        description='''
+        Pause or resume a habit with optional temporary pause until date.
+        Args:
+            habit_id: str (habit identifier)
+            action: str (pause or resume)
+            reason: Optional[str] (reason for pausing/resuming)
+            pause_until: Optional[str] (resume date for temporary pause YYYY-MM-DD)
+        Returns:
+            dict with success, action, habit_id, new_status
+        ''',
+        response_description="Pause/resume result with new habit status")
+@tool("pause_resume_habit", args_schema=PauseResumeHabitInput)
+async def pause_resume_habit(
+    habit_id: str, action: str, reason: Optional[str] = None, pause_until: Optional[str] = None
+):
+    """
+    Tool Purpose: Pause or resume a habit with optional temporary pause until date.
+    
+    Args:
+    - habit_id (str): Habit identifier
+    - action (str): "pause" or "resume"
+    - reason (Optional[str]): Reason for pausing/resuming
+    - pause_until (Optional[str]): Resume date for temporary pause (YYYY-MM-DD)
+    
+    Returns:
+    - Dict with success, action, habit_id, new_status
+    """
+    return await _pause_resume_habit(habit_id, action, reason, pause_until)
+
+@router.post("/add_habit_note",
+        operation_id="add_habit_note",
+        description='''
+        Add a note/diary entry for a habit on a specific date.
+        Args:
+            habit_id: str (habit identifier)
+            date: str (date for the note YYYY-MM-DD)
+            note_type: str (trigger, difficulty, learning, reflection, or general)
+            content: str (note content - thoughts, learnings, triggers faced, etc.)
+            mood_context: Optional[int] (mood score at time of note 1-10)
+            tags: Optional[List[str]] (tags for categorizing notes)
+        Returns:
+            dict with success, note_id, habit_id, date, note_type
+        ''',
+        response_description="Note creation result with note details")
+@tool("add_habit_note", args_schema=AddHabitNoteInput)
+async def add_habit_note(
+    habit_id: str, date: str, note_type: str, content: str,
+    mood_context: Optional[int] = None, tags: Optional[List[str]] = None
+):
+    """
+    Tool Purpose: Add a note/diary entry for a habit on a specific date.
+    
+    Args:
+    - habit_id (str): Habit identifier
+    - date (str): Date for the note in YYYY-MM-DD format
+    - note_type (str): Type of note (trigger, difficulty, learning, reflection, or general)
+    - content (str): Note content - thoughts, learnings, triggers faced, difficulties, etc.
+    - mood_context (Optional[int]): Mood score at time of note (1-10)
+    - tags (Optional[List[str]]): Tags for categorizing notes
+    
+    Returns:
+    - Dict with success, note_id, habit_id, date, note_type
+    """
+    return await _add_habit_note(habit_id, date, note_type, content, mood_context, tags)
+
+@router.get("/habit_notes/{habit_id}",
+        operation_id="get_habit_notes",
+        description='''
+        Get habit notes with optional filtering by date range and note type.
+        Args:
+            habit_id: str (habit identifier)
+            start_date: Optional[str] (start date for notes query YYYY-MM-DD)
+            end_date: Optional[str] (end date for notes query YYYY-MM-DD)
+            note_type: Optional[str] (filter by note type)
+            limit: Optional[int] (maximum number of notes to return, default 50)
+        Returns:
+            dict with success, notes, total_count, habit_id, filters_applied
+        ''',
+        response_description="Habit notes with filtering details")
+@tool("get_habit_notes", args_schema=GetHabitNotesInput)
+async def get_habit_notes(
+    habit_id: str, start_date: Optional[str] = None, end_date: Optional[str] = None,
+    note_type: Optional[str] = None, limit: Optional[int] = 50
+):
+    """
+    Tool Purpose: Get habit notes with optional filtering by date range and note type.
+    
+    Args:
+    - habit_id (str): Habit identifier
+    - start_date (Optional[str]): Start date for notes query (YYYY-MM-DD)
+    - end_date (Optional[str]): End date for notes query (YYYY-MM-DD)
+    - note_type (Optional[str]): Filter by note type (trigger, difficulty, learning, etc.)
+    - limit (Optional[int]): Maximum number of notes to return (default 50)
+    
+    Returns:
+    - Dict with success, notes, total_count, habit_id, filters_applied
+    """
+    return await _get_habit_notes(habit_id, start_date, end_date, note_type, limit)
+
+@router.get("/habit_insights/{habit_id}",
+        operation_id="get_habit_insights_from_notes",
+        description='''
+        Analyze habit notes to provide insights about patterns and triggers.
+        Args:
+            habit_id: str (habit identifier)
+            days: int (number of days to analyze, default 30)
+        Returns:
+            dict with insights including note type breakdown, common tags, mood analysis
+        ''',
+        response_description="Habit insights and patterns from notes analysis")
+@tool("get_habit_insights_from_notes")
+async def get_habit_insights_from_notes(habit_id: str, days: int = 30):
+    """
+    Tool Purpose: Analyze habit notes to provide insights about patterns and triggers.
+    
+    Args:
+    - habit_id (str): Habit identifier
+    - days (int): Number of days to analyze (default 30)
+    
+    Returns:
+    - Dict with insights including note type breakdown, common tags, mood analysis
+    """
+    return await _get_habit_insights_from_notes(habit_id, days) 

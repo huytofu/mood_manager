@@ -259,12 +259,12 @@ async def get_available_tools():
     """Get list of available tools that the LLM agent can orchestrate"""
     return {
         "description": "LLM Agent Tool Inventory - The habit manager brain orchestrates these specialized tools. LLM generates general recommendations from behavioral science knowledge, then extends with recommend_mood_supporting_habits only for crisis situations (stress/depression).",
-        "total_tools": 10,
+        "total_tools": 13,
         "tool_architecture": {
             "basic_operations": {
-                "count": 3,
-                "purpose": "Core CRUD operations for habit creation, daily execution, and progress tracking",
-                "tools": ["main_habit_operations", "daily_execution_operations", "progress_tracking_operations"]
+                "count": 6,
+                "purpose": "Core CRUD operations for habit creation, daily execution, progress tracking, and basic habit management",
+                "tools": ["main_habit_operations", "daily_execution_operations", "progress_tracking_operations", "modify_habit_parameters", "pause_resume_habit", "habit_notes_operations"]
             },
             "advanced_analytics": {
                 "count": 5,
@@ -321,6 +321,38 @@ async def get_available_tools():
                     "success_criteria": "Formation: any score > 0, Breaking: full intrinsic_score only"
                 },
                 "usage": "Performance monitoring and progress analytics with habit-type-aware scoring"
+            },
+            {
+                "name": "modify_habit_parameters",
+                "category": "basic_operations",
+                "purpose": "Modify habit timing, difficulty, and importance parameters for existing habits",
+                "inputs": ["habit_id: str", "timing_type: Optional[str]", "daily_timing: Optional[str]", "start_time: Optional[str]", "end_time: Optional[str]", "difficulty_level: Optional[str]", "intrinsic_score: Optional[int]"],
+                "outputs": ["success: bool", "modified_fields: list", "habit_id: str", "error: str"],
+                "timing_types": ["specific_time", "entire_day", "time_range"],
+                "difficulty_levels": ["easy", "medium", "hard"],
+                "intrinsic_score_range": "1-4 (importance weight)",
+                "usage": "Update habit parameters when user needs to adjust timing, difficulty, or importance"
+            },
+            {
+                "name": "pause_resume_habit",
+                "category": "basic_operations",
+                "purpose": "Temporarily pause or resume habits with optional scheduled auto-resume",
+                "inputs": ["habit_id: str", "action: str", "reason: Optional[str]", "pause_until: Optional[str]"],
+                "outputs": ["success: bool", "action: str", "habit_id: str", "new_status: str", "error: str"],
+                "actions": ["pause", "resume"],
+                "pause_features": ["temporary pause with auto-resume date", "reason tracking", "status management"],
+                "usage": "Temporary deactivation for travel, illness, schedule changes, or habit adjustments"
+            },
+            {
+                "name": "habit_notes_operations", 
+                "category": "basic_operations",
+                "purpose": "Add, retrieve, and analyze habit-specific notes and diary entries for triggers, difficulties, and learnings",
+                "inputs": ["operation: str", "params: dict"],
+                "outputs": ["success: bool", "data: dict", "operation: str", "error: str"],
+                "operations": ["add_note", "get_notes", "get_insights"],
+                "note_types": ["trigger", "difficulty", "learning", "reflection", "general"],
+                "features": ["mood context tracking", "tag categorization", "date-specific entries", "pattern analysis"],
+                "usage": "Track specific triggers for bad habits, difficulties with good habits, learnings, and behavioral insights"
             },
             {
                 "name": "analyze_underperforming_habits",
@@ -415,18 +447,27 @@ async def get_available_tools():
                 "3. recommend_mood_supporting_habits (if crisis detected)",
                 "4. final_habit_answer → standardized output"
             ],
+            "habit_modification": [
+                "1. modify_habit_parameters → update timing/difficulty/importance",
+                "2. pause_resume_habit → temporary deactivation/reactivation",
+                "3. habit_notes_operations → add insights and learnings",
+                "4. LLM generates adaptation recommendations",
+                "5. final_habit_answer → standardized output"
+            ],
             "habit_analysis": [
                 "1. analytics tools (step 1) → analyze patterns/issues",
                 "2. generate_habit_insights → comprehensive analysis (FINAL STEP)",
-                "3. LLM generates improvement recommendations",
-                "4. recommend_mood_supporting_habits (if crisis detected)",
-                "5. final_habit_answer → standardized output"
+                "3. habit_notes_operations → get_insights for behavioral patterns",
+                "4. LLM generates improvement recommendations",
+                "5. recommend_mood_supporting_habits (if crisis detected)",
+                "6. final_habit_answer → standardized output"
             ],
             "daily_execution": [
                 "1. daily_execution_operations → get or plan habits",
                 "2. progress_tracking_operations → track completions",
-                "3. LLM generates daily optimization suggestions",
-                "4. final_habit_answer → standardized output"
+                "3. habit_notes_operations → add_note for triggers/difficulties",
+                "4. LLM generates daily optimization suggestions",
+                "5. final_habit_answer → standardized output"
             ]
         },
         "analytics_workflow": {

@@ -160,6 +160,37 @@ class DateRecordDocument(BaseModel):
     created_at: str = Field(..., description="Creation timestamp ISO string")
 
 
+class HabitNoteDocument(BaseModel):
+    """Schema for habit_notes collection."""
+    note_id: str = Field(..., description="Unique note identifier", min_length=1)
+    habit_id: str = Field(..., description="Associated habit identifier", min_length=1)
+    user_id: str = Field(..., description="User identifier", min_length=1)
+    date: str = Field(..., description="Date of the note", regex=r"^[0-9]{4}-[0-9]{2}-[0-9]{2}$")
+    note_type: str = Field(..., description="Type of note: trigger, difficulty, learning, reflection, general")
+    content: str = Field(..., description="Note content", min_length=1, max_length=2000)
+    mood_context: Optional[int] = Field(None, description="Mood score context at time of note", ge=1, le=10)
+    tags: List[str] = Field(default_factory=list, description="Tags for categorizing notes")
+    created_at: str = Field(..., description="Creation timestamp ISO string")
+    last_modified: str = Field(..., description="Last modification timestamp ISO string")
+    
+    @field_validator('note_type')
+    def validate_note_type(cls, v):
+        valid_note_types = ["trigger", "difficulty", "learning", "reflection", "general"]
+        if v not in valid_note_types:
+            raise ValueError(f"note_type must be one of: {valid_note_types}")
+        return v
+    
+    @field_validator('tags')
+    def validate_tags(cls, v):
+        if v is not None:
+            # Ensure tags are lowercase and no duplicates
+            v = list(set([tag.lower().strip() for tag in v if tag.strip()]))
+            # Limit number of tags
+            if len(v) > 10:
+                raise ValueError("Maximum 10 tags allowed per note")
+        return v
+
+
 # VALIDATION HELPERS
 
 def validate_and_convert_to_dict(document_data: Dict, schema_class: BaseModel) -> Dict:
@@ -305,3 +336,29 @@ def validate_completion_data(completion_data: Dict) -> Dict:
         
     except Exception as e:
         raise ValueError(f"Completion data validation failed: {e}")
+
+
+def validate_habit_note_data(note_data: Dict) -> Dict:
+    """
+    Special validation helper for habit note creation with automatic defaults.
+    
+    Args:
+        note_data: Raw habit note data dictionary
+        
+    Returns:
+        Validated habit note data with defaults applied
+    """
+    try:
+        # Add timestamps if not present
+        current_time = datetime.now().isoformat()
+        note_data.setdefault("created_at", current_time)
+        note_data.setdefault("last_modified", current_time)
+        
+        # Ensure tags is a list if not provided
+        note_data.setdefault("tags", [])
+        
+        # Validate using HabitNoteDocument schema
+        return validate_and_convert_to_dict(note_data, HabitNoteDocument)
+        
+    except Exception as e:
+        raise ValueError(f"Habit note validation failed: {e}")

@@ -35,18 +35,25 @@ try:
 except ImportError:
     SMOLAGENTS_AVAILABLE = False
 
-# Import tools and prompts from habit manager modules
-from .habit_manager_tools import (
+# Import tools from new modular structure
+from .habit_basic_tools import (
     main_habit_operations,
+    modify_habit_parameters,
+    pause_resume_habit,
+    habit_notes_operations,
+)
+from .habit_execution_tools import (
     daily_execution_operations,
     progress_tracking_operations,
     final_habit_answer,
+)
+from .habit_analytics_tools import (
     analyze_underperforming_habits,
     analyze_lagging_epic_progress,
     analyze_habit_interactions,
     analyze_mood_habit_correlation,
     generate_habit_insights,
-    recommend_mood_supporting_habits
+    recommend_mood_supporting_habits,
 )
 from .habit_manager_prompts import HABIT_MANAGER_SYSTEM_PROMPT, get_habit_user_prompt_template, generate_habit_tools_documentation
 
@@ -120,6 +127,10 @@ class HabitManagerBrain:
             main_habit_operations,
             daily_execution_operations,
             progress_tracking_operations,
+            # NEW BASIC OPERATIONS
+            modify_habit_parameters,
+            pause_resume_habit,
+            habit_notes_operations,
             final_habit_answer,
             analyze_underperforming_habits,
             analyze_lagging_epic_progress,
@@ -225,7 +236,7 @@ class HabitManagerBrain:
                     # Fallback for tools that don't convert easily
                     pass
             
-            # Create CodeAgent  
+            # Create CodeAgent
             self.agent = CodeAgent(
                 tools=smolagents_tools,
                 model=self.model,
@@ -251,7 +262,7 @@ class HabitManagerBrain:
                 return await self._call_smolagents_agent(prompt, request)
             else:
                 raise ValueError(f"Unsupported agent type: {self.agent_type}")
-                
+            
         except Exception as e:
             return {
                 "intervention_type": "error",

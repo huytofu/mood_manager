@@ -52,6 +52,9 @@ then using the final_habit_answer tool to provide your final answer:
 - Use `daily_execution_operations` for daily habit activities (get_daily_habits, plan_flexible_habits)  
 - Use `progress_tracking_operations` for completion tracking and analytics (track_completion, calculate_trends, calculate_epic_progress)
 progress_tracking_operations with operation = track_completion will also return a habit's streaks information
+- Use `modify_habit_parameters` for updating existing habit timing, difficulty, or importance
+- Use `pause_resume_habit` for temporary deactivation/reactivation with optional auto-resume dates
+- Use `habit_notes_operations` for tracking triggers, difficulties, learnings, and behavioral insights (add_note, get_notes, get_insights)
 
 ### Advanced Analytics (simplified unidirectional flow. only use these tools if you are asked about complex analysis especially when user is struggling with habit consistency or epic goal progress):
 - Use `analyze_underperforming_habits` when users struggle with consistency (step 1)
@@ -186,7 +189,72 @@ Thought: Excellent! I have comprehensive insights that show exactly how to accel
 Action: final_habit_answer
 Action Input: {"intervention_type": "habit_analysis", "analysis_result": {"epic_progress_gap": 15, "bottleneck_habit": "Daily Workout", "completion_rate": 0.45, "key_insights": ["Weekend dropout pattern", "Evening timing conflicts", "Morning sessions much more successful"]}, "recommendations": ["URGENT: Move all workouts to 6-7 AM starting this week", "Create 15-minute weekend workout alternatives", "Set up workout clothes and equipment night before", "Track morning workout wins to build momentum", "Reassess epic goal timeline in 2 weeks"], "insights": ["EPIC GOAL LAGGING: 15.0% behind expected progress", "Primary bottleneck: 'Daily Workout' at 45.0% consistency", "Weekends are major failure point", "Evening workouts conflict with social/family time", "Early morning sessions have 85% success rate"], "patterns": {"completion_patterns": {"weekend_dropout": true, "weekday_average": 0.7, "weekend_average": 0.2}, "timing_patterns": {"evening_conflicts": true, "optimal_timing": "early_morning"}}, "integrated_analysis": {"epic_progress": {"epic_analysis": {"current_progress": 35, "expected_progress": 50, "progress_gap": 15, "is_lagging": true}, "bottleneck_habits": [{"habit_id": "workout_habit", "habit_name": "Daily Workout", "consistency_rate": 0.45, "impact_on_epic": 0.55}], "corrective_actions": ["Critical: Address 'Daily Workout' consistency issues - only 45% completion rate"], "success": true}}, "epic_progress_data": {"epic_analysis": {"current_progress": 35, "expected_progress": 50, "progress_gap": 15, "is_lagging": true}, "bottleneck_habits": [{"habit_id": "workout_habit", "habit_name": "Daily Workout", "consistency_rate": 0.45, "impact_on_epic": 0.55}]}}
 
-EXAMPLE 4 - DAILY EXECUTION AND PROGRESS TRACKING:
+EXAMPLE 5 - HABIT MODIFICATION AND NOTES:
+============
+User ID: user_654
+Intent: User needs to adjust a habit that's not working and track what triggers their failures
+User Data: {"habit_id": "habit_exercise_123", "current_timing": "evening", "user_text_input": "My evening workout keeps failing because of family obligations, and I need to track what's making me skip it"}
+Context: {"schedule_conflicts": true}
+Priority: medium
+
+Thought: User's habit timing isn't working and they want to track failure patterns. I'll modify the timing first, then set up note tracking for triggers.
+Action: modify_habit_parameters
+Action Input: {"habit_id": "habit_exercise_123", "timing_type": "specific_time", "daily_timing": "07:00", "difficulty_level": "easy"}
+Observation: {"success": true, "data": {"success": true, "message": "Habit parameters updated successfully", "modified_fields": ["timing_type", "daily_timing", "difficulty_level"], "habit_id": "habit_exercise_123"}, "operation": "modify_habit_parameters"}
+
+Thought: Now I'll add a note about the timing change reason for future reference.
+Action: habit_notes_operations
+Action Input: {"operation": "add_note", "params": {"habit_id": "habit_exercise_123", "date": "2024-02-15", "note_type": "learning", "content": "Changed from evening to morning timing due to family obligations conflicts. Starting with easier difficulty to rebuild consistency.", "mood_context": 6, "tags": ["timing_change", "family_conflict"]}}
+Observation: {"success": true, "data": {"success": true, "message": "Habit note added successfully", "note_id": "note_abc123", "habit_id": "habit_exercise_123", "date": "2024-02-15", "note_type": "learning"}, "operation": "add_note"}
+
+Thought: Perfect! Now I'll provide guidance on tracking triggers going forward.
+Action: final_habit_answer
+Action Input: {"intervention_type": "habit_modification", "habit_plan": {"habit_id": "habit_exercise_123", "modifications": ["timing: evening → 07:00", "difficulty: medium → easy"]}, "recommendations": ["Track specific triggers when you skip workouts using habit notes", "Use note_type 'trigger' for failure causes and 'difficulty' for workout challenges", "Add notes immediately after skipping to capture accurate trigger information", "Review notes weekly to identify patterns using get_insights operation", "Morning timing reduces family conflict interference"]}
+
+EXAMPLE 6 - PAUSE AND RESUME WITH TRAVEL:
+============
+User ID: user_987
+Intent: User is traveling for 2 weeks and needs to pause some habits temporarily
+User Data: {"traveling_dates": "2024-03-01 to 2024-03-15", "habits_to_pause": ["gym_workout", "home_cooking"], "user_text_input": "Going on vacation, can't do gym or cooking but want to resume automatically when I'm back"}
+Context: {"travel_duration": "2 weeks"}
+Priority: medium
+
+Thought: User needs temporary pause with automatic resume for travel. I'll pause the location-dependent habits with auto-resume date.
+Action: pause_resume_habit
+Action Input: {"habit_id": "habit_gym_456", "action": "pause", "reason": "Vacation travel - no gym access", "pause_until": "2024-03-16"}
+Observation: {"success": true, "data": {"success": true, "message": "Habit paused successfully until 2024-03-16", "action": "pause", "habit_id": "habit_gym_456", "new_status": "paused"}, "operation": "pause_resume_habit"}
+
+Action: pause_resume_habit
+Action Input: {"habit_id": "habit_cooking_789", "action": "pause", "reason": "Vacation travel - eating out", "pause_until": "2024-03-16"}
+Observation: {"success": true, "data": {"success": true, "message": "Habit paused successfully until 2024-03-16", "action": "pause", "habit_id": "habit_cooking_789", "new_status": "paused"}, "operation": "pause_resume_habit"}
+
+Thought: Both habits are paused with auto-resume. Now I'll provide travel-friendly alternatives.
+Action: final_habit_answer
+Action Input: {"intervention_type": "habit_modification", "habit_plan": {"paused_habits": ["gym_workout", "home_cooking"], "auto_resume_date": "2024-03-16"}, "recommendations": ["Consider travel-friendly alternatives: bodyweight exercises in hotel room", "Track vacation eating choices using habit notes for mindful dining", "Use travel as opportunity to try new healthy activities (hiking, walking tours)", "Set reminder for March 16th to confirm habit resumption", "Both habits will automatically reactivate on return date"]}
+
+EXAMPLE 7 - TRIGGER TRACKING AND INSIGHTS:
+============
+User ID: user_555
+Intent: User wants to understand why they keep failing at avoiding late-night social media
+User Data: {"habit_id": "habit_no_phone_bed", "habit_type": "breaking", "user_text_input": "I keep checking my phone in bed despite trying to break this habit for months"}
+Context: {"habit_struggling": true}
+Priority: medium
+
+Thought: User needs to track and analyze what triggers their phone checking habit. I'll add a trigger note first, then show how to get insights.
+Action: habit_notes_operations
+Action Input: {"operation": "add_note", "params": {"habit_id": "habit_no_phone_bed", "date": "2024-02-15", "note_type": "trigger", "content": "Checked phone at 11:30 PM after argument with partner. Was feeling anxious and wanted distraction from replaying the conversation.", "mood_context": 3, "tags": ["anxiety", "relationship_stress", "avoidance"]}}
+Observation: {"success": true, "data": {"success": true, "message": "Habit note added successfully", "note_id": "note_trigger_456", "habit_id": "habit_no_phone_bed", "date": "2024-02-15", "note_type": "trigger"}, "operation": "add_note"}
+
+Thought: Now I'll demonstrate getting insights from accumulated notes to identify patterns.
+Action: habit_notes_operations
+Action Input: {"operation": "get_insights", "params": {"habit_id": "habit_no_phone_bed", "days": 30}}
+Observation: {"success": true, "data": {"success": true, "insights": {"total_notes": 12, "analysis_period_days": 30, "note_type_breakdown": {"trigger": 8, "difficulty": 3, "learning": 1}, "common_tags": {"anxiety": 6, "boredom": 4, "relationship_stress": 3, "work_stress": 2, "avoidance": 5}, "mood_analysis": {"average_mood": 4.2, "mood_range": {"min": 2, "max": 7}, "total_mood_entries": 11}}, "habit_id": "habit_no_phone_bed"}, "operation": "get_insights"}
+
+Thought: Great insights! The patterns show anxiety and avoidance are major triggers. I can provide targeted recommendations.
+Action: final_habit_answer
+Action Input: {"intervention_type": "habit_analysis", "analysis_result": {"primary_triggers": ["anxiety", "avoidance", "relationship_stress"], "trigger_frequency": 8, "average_mood_during_failures": 4.2}, "recommendations": ["PRIMARY TRIGGER: Anxiety (6/12 notes) - develop alternative coping strategies", "Create anxiety response plan: 3 deep breaths + journaling instead of phone", "Keep phone charger outside bedroom - physical barrier", "Practice progressive muscle relaxation before bed", "Address relationship stress triggers with partner communication", "Track mood before bedtime to predict high-risk nights"], "insights": ["Anxiety and avoidance are primary triggers for phone checking", "Low mood (avg 4.2) predicts higher likelihood of habit failure", "Relationship stress appears in 25% of trigger episodes", "Pattern shows emotional regulation issues, not just habit discipline"], "patterns": {"trigger_breakdown": {"anxiety": 6, "boredom": 4, "relationship_stress": 3, "work_stress": 2, "avoidance": 5}, "mood_correlation": "Lower mood = higher failure risk"}}
+
+EXAMPLE 8 - DAILY EXECUTION AND PROGRESS TRACKING:
 ============
 User ID: user_321
 Intent: User needs daily habit planning, completion tracking, and wants to see progress trends
@@ -441,7 +509,7 @@ def generate_habit_tools_documentation(tools: List[BaseTool]) -> str:
         tool_name = tool.name if hasattr(tool, 'name') else str(tool)
         tool_desc = tool.description if hasattr(tool, 'description') else "No description available"
         
-        if tool_name in ['main_habit_operations', 'daily_execution_operations', 'progress_tracking_operations', 'recommend_mood_supporting_habits', 'final_habit_answer']:
+        if tool_name in ['main_habit_operations', 'daily_execution_operations', 'progress_tracking_operations', 'modify_habit_parameters', 'pause_resume_habit', 'habit_notes_operations', 'recommend_mood_supporting_habits', 'final_habit_answer']:
             basic_ops.append(f"- **{tool_name}**: {tool_desc}")
         else:
             advanced_analytics.append(f"- **{tool_name}**: {tool_desc}")

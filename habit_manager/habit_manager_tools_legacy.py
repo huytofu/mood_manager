@@ -4,22 +4,31 @@ from langchain_core.tools import tool
 from datetime import datetime, timedelta
 import uuid
 
-# Import basic habit functions for direct calls (similar to call_audio_endpoint pattern)
-from utils.habit_utils import (
+# Import functions from the new modular structure
+from utils.habit_core import (
     _create_micro_habit_record,
     _create_epic_habit_record,
     _assign_micro_to_epic_record,
+    _get_habit_by_id,
+    _get_epic_habit_by_id,
+    _get_user_habit_limits,
+    _modify_habit_parameters,
+    _pause_resume_habit,
+    _add_habit_note,
+    _get_habit_notes,
+)
+from utils.habit_execution import (
     _plan_flexible_habits_timing,
     _get_daily_habit_list_organized,
     _track_habit_completion_record,
+)
+from utils.habit_analytics import (
     _calculate_basic_habit_trends,
     _calculate_basic_epic_progress,
-    _get_habit_by_id,
-    _get_epic_habit_by_id,
+    _get_habit_insights_from_notes,
     _get_mood_records,
     _get_completion_records,
     _get_all_user_completions,
-    get_user_habit_limits
 )
 
 # =============================================================================
@@ -38,6 +47,26 @@ class DailyExecutionInput(BaseModel):
 class ProgressTrackingInput(BaseModel):
     operation: str = Field(..., description="Operation name: calculate_trends, calculate_epic_progress")
     params: Dict[str, Any] = Field(..., description="Parameters for the progress tracking operation")
+
+# NEW BASIC OPERATIONS SCHEMAS
+class ModifyHabitParametersInput(BaseModel):
+    habit_id: str = Field(..., description="Habit identifier")
+    timing_type: Optional[str] = Field(default=None, description="specific_time, entire_day, or time_range")
+    daily_timing: Optional[str] = Field(default=None, description="Fixed time like 07:00 or after_coffee")
+    start_time: Optional[str] = Field(default=None, description="Start time for time_range habits (HH:MM format)")
+    end_time: Optional[str] = Field(default=None, description="End time for time_range habits (HH:MM format)")
+    difficulty_level: Optional[str] = Field(default=None, description="Difficulty level: easy, medium, hard")
+    intrinsic_score: Optional[int] = Field(default=None, description="Importance score 1-4")
+
+class PauseResumeHabitInput(BaseModel):
+    habit_id: str = Field(..., description="Habit identifier")
+    action: str = Field(..., description="pause or resume")
+    reason: Optional[str] = Field(default=None, description="Reason for pausing/resuming")
+    pause_until: Optional[str] = Field(default=None, description="Resume date for temporary pause (YYYY-MM-DD)")
+
+class HabitNotesOperationInput(BaseModel):
+    operation: str = Field(..., description="Operation name: add_note, get_notes, get_insights")
+    params: Dict[str, Any] = Field(..., description="Parameters for the habit notes operation")
 
 # Schema removed - create_comprehensive_habit_plan function was removed
 # Schema removed - generate_habit_recommendations function was removed
@@ -273,6 +302,127 @@ async def progress_tracking_operations(operation: str, params: Dict[str, Any]) -
             "operation": operation
         }
 
+# =============================================================================
+# NEW BASIC OPERATIONS TOOLS
+# =============================================================================
+
+@tool("modify_habit_parameters", args_schema=ModifyHabitParametersInput)
+async def modify_habit_parameters(
+    habit_id: str, timing_type: Optional[str] = None, daily_timing: Optional[str] = None,
+    start_time: Optional[str] = None, end_time: Optional[str] = None,
+    difficulty_level: Optional[str] = None, intrinsic_score: Optional[int] = None
+) -> Dict[str, Any]:
+    """
+    Tool Purpose: Modify habit timing, difficulty, and importance parameters.
+    
+    Args:
+    - habit_id (str): Habit identifier
+    - timing_type (Optional[str]): specific_time, entire_day, or time_range
+    - daily_timing (Optional[str]): Fixed time like 07:00 or after_coffee
+    - start_time (Optional[str]): Start time for time_range habits (HH:MM format)
+    - end_time (Optional[str]): End time for time_range habits (HH:MM format)
+    - difficulty_level (Optional[str]): Difficulty level (easy, medium, hard)
+    - intrinsic_score (Optional[int]): Importance score 1-4
+    
+    Returns:
+    - Dict with success, modified_fields, habit_id, error
+    """
+    try:
+        result = await _modify_habit_parameters(
+            habit_id, timing_type, daily_timing, start_time, end_time, difficulty_level, intrinsic_score
+        )
+        return {
+            "success": result["success"],
+            "data": result,
+            "operation": "modify_habit_parameters"
+        }
+    except Exception as e:
+        return {
+            "success": False,
+            "error": str(e),
+            "operation": "modify_habit_parameters"
+        }
+
+@tool("pause_resume_habit", args_schema=PauseResumeHabitInput)
+async def pause_resume_habit(
+    habit_id: str, action: str, reason: Optional[str] = None, pause_until: Optional[str] = None
+) -> Dict[str, Any]:
+    """
+    Tool Purpose: Pause or resume a habit with optional temporary pause until date.
+    
+    Args:
+    - habit_id (str): Habit identifier
+    - action (str): "pause" or "resume"
+    - reason (Optional[str]): Reason for pausing/resuming
+    - pause_until (Optional[str]): Resume date for temporary pause (YYYY-MM-DD)
+    
+    Returns:
+    - Dict with success, action, habit_id, new_status, error
+    """
+    try:
+        result = await _pause_resume_habit(habit_id, action, reason, pause_until)
+        return {
+            "success": result["success"],
+            "data": result,
+            "operation": "pause_resume_habit"
+        }
+    except Exception as e:
+        return {
+            "success": False,
+            "error": str(e),
+            "operation": "pause_resume_habit"
+        }
+
+@tool("habit_notes_operations", args_schema=HabitNotesOperationInput)
+async def habit_notes_operations(operation: str, params: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Tool Purpose: Handle habit notes operations (add, retrieve, and analyze notes).
+    
+    Args:
+    - operation (str): Operation name (add_note, get_notes, get_insights)
+    - params (Dict[str, Any]): Parameters for the habit notes operation
+    
+    Returns:
+    - Dict containing: success (bool), data (Any), operation (str), error (str if failed)
+    """
+    try:
+        if operation == "add_note":
+            result = await _add_habit_note(
+                habit_id=params.get("habit_id"),
+                date=params.get("date"),
+                note_type=params.get("note_type"),
+                content=params.get("content"),
+                mood_context=params.get("mood_context"),
+                tags=params.get("tags")
+            )
+        elif operation == "get_notes":
+            result = await _get_habit_notes(
+                habit_id=params.get("habit_id"),
+                start_date=params.get("start_date"),
+                end_date=params.get("end_date"),
+                note_type=params.get("note_type"),
+                limit=params.get("limit", 50)
+            )
+        elif operation == "get_insights":
+            result = await _get_habit_insights_from_notes(
+                habit_id=params.get("habit_id"),
+                days=params.get("days", 30)
+            )
+        else:
+            raise ValueError(f"Unknown habit notes operation: {operation}")
+        
+        return {
+            "success": True,
+            "data": result,
+            "operation": operation
+        }
+        
+    except Exception as e:
+        return {
+            "success": False,
+            "error": str(e),
+            "operation": operation
+        }
 
 # =============================================================================
 # FINAL ANSWER TOOL
@@ -384,7 +534,7 @@ async def analyze_underperforming_habits(
     - Dict containing: underperforming_habits (List), analysis (Dict), recommendations (List)
     """
     # Check user tier permissions
-    user_limits = get_user_habit_limits(user_id)
+    user_limits = _get_user_habit_limits(user_id)
     
     if not user_limits["ai_insights"]:
         return {
@@ -513,7 +663,7 @@ async def analyze_lagging_epic_progress(
     - Dict containing: epic_analysis (Dict), bottleneck_habits (List), corrective_actions (List)
     """
     # Check user tier permissions
-    user_limits = get_user_habit_limits(user_id)
+    user_limits = _get_user_habit_limits(user_id)
     
     if not user_limits["epic_progress_calculation"]:
         return {
@@ -624,7 +774,7 @@ async def analyze_habit_interactions(
     - Dict containing: synchronous_pairs (List), antagonistic_pairs (List), insights (List)
     """
     # Check user tier permissions
-    user_limits = get_user_habit_limits(user_id)
+    user_limits = _get_user_habit_limits(user_id)
     
     if not user_limits["habit_interaction_analysis"]:
         return {
@@ -811,7 +961,7 @@ async def analyze_mood_habit_correlation(
     - Dict containing: correlations (Dict), insights (List), recommendations (List)
     """
     # Check user tier permissions
-    user_limits = get_user_habit_limits(user_id)
+    user_limits = _get_user_habit_limits(user_id)
     
     if not user_limits["mood_correlation"]:
         return {
@@ -897,7 +1047,7 @@ async def generate_habit_insights(
     - Dict containing: insights (List), patterns (Dict), recommendations (List), integrated_analysis (Dict)
     """
     # Check user tier permissions
-    user_limits = get_user_habit_limits(user_id)
+    user_limits = _get_user_habit_limits(user_id)
     
     if not user_limits["ai_insights"]:
         return {
