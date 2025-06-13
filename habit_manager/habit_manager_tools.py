@@ -318,7 +318,7 @@ async def analyze_underperforming_habits(
     Args:
     - user_id (str): User identifier
     - time_period (str): Time period for analysis (weekly, monthly, custom)
-    - threshold (float): Completion rate threshold below which habits are underperforming
+    - threshold (float): Completion rate threshold below which habits are considered underperforming
     
     Returns:
     - Dict containing: underperforming_habits (List), analysis (Dict), recommendations (List)
@@ -345,8 +345,19 @@ async def analyze_underperforming_habits(
             habit_performance[habit_id] = {"attempts": 0, "successes": 0, "scores": [], "timings": []}
         
         habit_performance[habit_id]["attempts"] += 1
-        if completion["completion_score"] > 0:
-            habit_performance[habit_id]["successes"] += 1
+        
+        # Get habit type to determine success criteria
+        habit_type = completion.get("habit_type", "formation")
+        
+        if habit_type == "breaking":
+            # For bad habits: success = staying clean (score = intrinsic_score)
+            if completion["completion_score"] == completion.get("intrinsic_score", 1):
+                habit_performance[habit_id]["successes"] += 1
+        else:
+            # For good habits: success = any positive score
+            if completion["completion_score"] > 0:
+                habit_performance[habit_id]["successes"] += 1
+                
         habit_performance[habit_id]["scores"].append(completion["completion_score"])
         if completion.get("actual_timing"):
             habit_performance[habit_id]["timings"].append(completion["actual_timing"])
@@ -358,11 +369,13 @@ async def analyze_underperforming_habits(
         
         if completion_rate < threshold:
             habit = await _get_habit_by_id(habit_id)
+            habit_type = habit.get("habit_type", "formation") if habit else "formation"
             avg_score = sum(performance["scores"]) / len(performance["scores"]) if performance["scores"] else 0
             
             underperforming_habits.append({
                 "habit_id": habit_id,
                 "habit_name": habit.get("name", "Unknown") if habit else "Unknown",
+                "habit_type": habit_type,
                 "completion_rate": round(completion_rate, 3),
                 "average_score": round(avg_score, 3),
                 "attempts": performance["attempts"],
@@ -377,16 +390,31 @@ async def analyze_underperforming_habits(
     recommendations = []
     for habit in underperforming_habits[:3]:  # Top 3 most impactful
         habit_data = await _get_habit_by_id(habit["habit_id"])
+        habit_type = habit["habit_type"]
         
-        if habit["completion_rate"] < 0.1:
-            recommendations.append(f"Consider pausing or redesigning '{habit['habit_name']}' - extremely low completion rate")
-        elif habit["completion_rate"] < 0.2:
-            recommendations.append(f"Simplify '{habit['habit_name']}' or reduce frequency - too ambitious")
-        elif habit["average_score"] < habit["intrinsic_score"] * 0.5:
-            recommendations.append(f"Break down '{habit['habit_name']}' into smaller steps - partial completion issues")
+        if habit_type == "breaking":
+            # Bad habit recommendations (relapse prevention)
+            if habit["completion_rate"] < 0.1:
+                recommendations.append(f"Critical: '{habit['habit_name']}' has very high relapse rate - consider intensive intervention")
+            elif habit["completion_rate"] < 0.3:
+                recommendations.append(f"High relapse rate for '{habit['habit_name']}' - strengthen triggers identification and avoidance strategies")
+            elif habit["completion_rate"] < 0.5:
+                recommendations.append(f"'{habit['habit_name']}' showing moderate relapse pattern - review and adjust coping mechanisms")
+                
+            # Additional relapse-specific recommendations
+            recommendations.append(f"For '{habit['habit_name']}': Consider accountability partner or support group")
+            
+        else:
+            # Good habit recommendations (completion improvement)
+            if habit["completion_rate"] < 0.1:
+                recommendations.append(f"Consider pausing or redesigning '{habit['habit_name']}' - extremely low completion rate")
+            elif habit["completion_rate"] < 0.2:
+                recommendations.append(f"Simplify '{habit['habit_name']}' or reduce frequency - too ambitious")
+            elif habit["average_score"] < habit["intrinsic_score"] * 0.5:
+                recommendations.append(f"Break down '{habit['habit_name']}' into smaller steps - partial completion issues")
         
-        # Timing-based recommendations
-        if habit_data and habit_data.get("daily_timing") and len(habit_performance[habit["habit_id"]]["timings"]) > 3:
+        # Timing-based recommendations (applicable to both types)
+        if habit_data and habit_data.get("timing_type") == "specific_time" and len(habit_performance[habit["habit_id"]]["timings"]) > 3:
             timing_variance = len(set(habit_performance[habit["habit_id"]]["timings"]))
             if timing_variance > 3:
                 recommendations.append(f"Consider flexible timing for '{habit['habit_name']}' - timing conflicts detected")
@@ -401,7 +429,9 @@ async def analyze_underperforming_habits(
             "total_habits_analyzed": len(habit_performance),
             "underperforming_count": len(underperforming_habits),
             "threshold_used": threshold,
-            "time_period": time_period
+            "time_period": time_period,
+            "formation_habits": len([h for h in underperforming_habits if h["habit_type"] == "formation"]),
+            "breaking_habits": len([h for h in underperforming_habits if h["habit_type"] == "breaking"])
         },
         "recommendations": recommendations,
         "success": True
@@ -544,24 +574,33 @@ async def analyze_habit_interactions(
             "feature_blocked": "habit_interaction_analysis"
         }
     
-    if not user_limits["habit_interaction_analysis"]:
-        return {
-            "success": False,
-            "error": "Habit interaction analysis requires premium plan",
-            "upgrade_message": "Upgrade to premium for habit synergy and conflict detection",
-            "feature_blocked": "habit_interaction_analysis"
-        }
-    
     # Get all user completions
     all_completions = await _get_all_user_completions(user_id, time_period)
     
     # Group by date and habit
     daily_completions = {}
+    habit_types = {}  # Track habit types for each habit
+    
     for completion in all_completions:
         date = completion["date"]
+        habit_id = completion["habit_id"]
+        
         if date not in daily_completions:
             daily_completions[date] = {}
-        daily_completions[date][completion["habit_id"]] = completion["completion_score"]
+        
+        # Store habit type for later reference
+        habit_type = completion.get("habit_type", "formation")
+        habit_types[habit_id] = habit_type
+        
+        # Normalize scores for correlation analysis
+        if habit_type == "breaking":
+            # For bad habits: 1 = stayed clean (success), 0 = relapsed (failure)
+            normalized_score = completion["completion_score"]  # Already 0 or 1
+        else:
+            # For good habits: normalize to 0-1 range based on completion
+            normalized_score = 1 if completion["completion_score"] > 0 else 0
+            
+        daily_completions[date][habit_id] = normalized_score
     
     # Get unique habits
     all_habits = set()
@@ -594,27 +633,38 @@ async def analyze_habit_interactions(
                 
                 habit1_name = habit1_details.get("name", "Unknown") if habit1_details else "Unknown"
                 habit2_name = habit2_details.get("name", "Unknown") if habit2_details else "Unknown"
+                habit1_type = habit_types.get(habit1, "formation")
+                habit2_type = habit_types.get(habit2, "formation")
+                
+                # Interpret correlation based on habit types
+                correlation_meaning = _interpret_habit_correlation(correlation, habit1_type, habit2_type)
                 
                 if correlation > 0.5 and interaction_type in ["synchronous", "all"]:
                     synchronous_pairs.append({
                         "habit1_id": habit1,
                         "habit1_name": habit1_name,
+                        "habit1_type": habit1_type,
                         "habit2_id": habit2,
                         "habit2_name": habit2_name,
+                        "habit2_type": habit2_type,
                         "correlation": round(correlation, 3),
                         "strength": "strong" if correlation > 0.7 else "moderate",
-                        "data_points": len(habit1_scores)
+                        "data_points": len(habit1_scores),
+                        "meaning": correlation_meaning["positive"]
                     })
                 
                 elif correlation < -0.3 and interaction_type in ["antagonistic", "all"]:
                     antagonistic_pairs.append({
                         "habit1_id": habit1,
                         "habit1_name": habit1_name,
+                        "habit1_type": habit1_type,
                         "habit2_id": habit2,
                         "habit2_name": habit2_name,
+                        "habit2_type": habit2_type,
                         "correlation": round(correlation, 3),
                         "strength": "strong" if correlation < -0.6 else "moderate",
-                        "data_points": len(habit1_scores)
+                        "data_points": len(habit1_scores),
+                        "meaning": correlation_meaning["negative"]
                     })
     
     # Sort by correlation strength
@@ -626,12 +676,17 @@ async def analyze_habit_interactions(
     
     # Synchronous insights
     for pair in synchronous_pairs[:3]:  # Top 3
-        insights.append(f"'{pair['habit1_name']}' and '{pair['habit2_name']}' have {pair['strength']} positive correlation - success in one supports the other")
+        insights.append(f"'{pair['habit1_name']}' ({pair['habit1_type']}) and '{pair['habit2_name']}' ({pair['habit2_type']}) have {pair['strength']} positive correlation - {pair['meaning']}")
     
     # Antagonistic insights
     for pair in antagonistic_pairs[:3]:  # Top 3
-        insights.append(f"'{pair['habit1_name']}' and '{pair['habit2_name']}' have {pair['strength']} negative correlation - conflict detected")
-        insights.append(f"Consider scheduling '{pair['habit1_name']}' and '{pair['habit2_name']}' at different times or reducing frequency of one")
+        insights.append(f"'{pair['habit1_name']}' ({pair['habit1_type']}) and '{pair['habit2_name']}' ({pair['habit2_type']}) have {pair['strength']} negative correlation - {pair['meaning']}")
+        
+        # Specific recommendations for antagonistic pairs
+        if pair['habit1_type'] == "formation" and pair['habit2_type'] == "formation":
+            insights.append(f"Consider scheduling '{pair['habit1_name']}' and '{pair['habit2_name']}' at different times to reduce conflict")
+        elif pair['habit1_type'] == "breaking" or pair['habit2_type'] == "breaking":
+            insights.append(f"Resource competition or stress spillover detected between habits - monitor carefully")
     
     # Strategic insights
     if len(synchronous_pairs) > len(antagonistic_pairs):
@@ -647,10 +702,38 @@ async def analyze_habit_interactions(
             "total_habit_pairs_analyzed": len(habit_list) * (len(habit_list) - 1) // 2,
             "synchronous_relationships": len(synchronous_pairs),
             "antagonistic_relationships": len(antagonistic_pairs),
-            "time_period": time_period
+            "time_period": time_period,
+            "formation_habits_count": len([h for h in habit_types.values() if h == "formation"]),
+            "breaking_habits_count": len([h for h in habit_types.values() if h == "breaking"])
         },
         "success": True
     }
+
+def _interpret_habit_correlation(correlation: float, habit1_type: str, habit2_type: str) -> Dict[str, str]:
+    """Interpret correlation meaning based on habit types."""
+    if habit1_type == "formation" and habit2_type == "formation":
+        # Both good habits
+        return {
+            "positive": "success in one supports success in the other",
+            "negative": "resource competition or timing conflicts"
+        }
+    elif habit1_type == "breaking" and habit2_type == "breaking":
+        # Both bad habits
+        return {
+            "positive": "relapses tend to cluster together - shared triggers or stress",
+            "negative": "success in avoiding one helps avoid the other"
+        }
+    elif (habit1_type == "formation" and habit2_type == "breaking") or (habit1_type == "breaking" and habit2_type == "formation"):
+        # Mixed types
+        return {
+            "positive": "good habit success coincides with bad habit relapses - concerning pattern",
+            "negative": "good habit success helps prevent bad habit relapses - beneficial pattern"
+        }
+    else:
+        return {
+            "positive": "habits tend to succeed together",
+            "negative": "habits tend to conflict with each other"
+        }
 
 @tool("analyze_mood_habit_correlation", args_schema=AnalyzeMoodHabitCorrelationInput)
 async def analyze_mood_habit_correlation(
@@ -838,7 +921,9 @@ def recommend_mood_supporting_habits(
                 "breathing_exercises",  # 2-minute breathing routine
                 "emergency_grounding",  # 5-4-3-2-1 sensory grounding
                 "call_support_person",  # Immediate human contact
-                "crisis_safety_routine"  # Basic safety/survival habits
+                "crisis_safety_routine",  # Basic safety/survival habits
+                "avoid_substance_use",  # Critical bad habit avoidance during crisis
+                "avoid_impulsive_decisions"  # Prevent crisis-driven harmful choices
             ])
         elif crisis_level >= 5:
             # Medium stress
@@ -846,7 +931,10 @@ def recommend_mood_supporting_habits(
                 "breathing_exercises",  # 5-minute breathing routine
                 "short_walk",  # 10-minute outdoor walk
                 "stress_journaling",  # Quick thought dump
-                "gentle_stretching"  # 5-minute stress release
+                "gentle_stretching",  # 5-minute stress release
+                "limit_caffeine",  # Reduce stimulants during stress
+                "avoid_emotional_spending",  # Prevent stress shopping
+                "limit_social_media"  # Reduce comparison triggers
             ])
         else:
             # General stress
@@ -854,11 +942,14 @@ def recommend_mood_supporting_habits(
                 "mindfulness_breaks",  # 3-minute mindfulness check-ins
                 "physical_activity",  # Any movement for stress relief
                 "limit_negative_inputs",  # Reduce stressful content
-                "stress_prevention_routine"  # Evening wind-down
+                "stress_prevention_routine",  # Evening wind-down
+                "moderate_alcohol_intake",  # Avoid using alcohol as stress relief
+                "limit_screen_time"  # Reduce overstimulation
             ])
     
     # Depression-specific recommendations
     if is_depressed or mood_state == "depression":
+        # Formation habits for depression
         recommendations.extend([
             "morning_sunlight",  # 15 minutes outdoor light exposure
             "gentle_movement",  # Light stretching or yoga
@@ -866,6 +957,25 @@ def recommend_mood_supporting_habits(
             "social_connection",  # Text/call one person
             "basic_self_care",  # Shower, brush teeth, get dressed
             "creative_expression"  # Any creative activity
+        ])
+        
+        # Breaking habits critical during depression
+        recommendations.extend([
+            "avoid_isolation",  # Don't stay in bed all day
+            "limit_rumination",  # Break thought loops
+            "avoid_self_criticism",  # Stop negative self-talk
+            "limit_depressive_content",  # Avoid sad music/movies that worsen mood
+            "avoid_major_decisions",  # Don't make life changes while depressed
+            "limit_comparison_behaviors"  # Stop comparing to others on social media
+        ])
+    
+    # Universal mood-supporting bad habit avoidance
+    if is_crisis or is_depressed or mood_state in ["stress", "depression"]:
+        recommendations.extend([
+            "avoid_emotional_eating",  # Don't use food to cope with emotions
+            "limit_escapist_behaviors",  # Reduce excessive gaming/binge-watching
+            "avoid_conflict_seeking",  # Don't pick fights when emotional
+            "limit_pessimistic_news"  # Reduce exposure to negative news cycles
         ])
     
     return recommendations

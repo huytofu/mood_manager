@@ -1,7 +1,7 @@
 from typing import List, Dict, Any, Optional
 from datetime import datetime, timedelta
 import uuid
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from database.mongo_habit_manager import mongo_habit_manager
 from database.mongo_user_manager import mongo_user_manager
 
@@ -89,12 +89,29 @@ class CreateMicroHabitInput(BaseModel):
     frequency: Optional[str] = Field(default=None, description="For weekly: 3x_week, every_2_days, etc.")
     weekly_days: Optional[List[str]] = Field(default=None, description="For weekly habits: [monday, wednesday, friday]")
     specific_dates: Optional[List[str]] = Field(default=None, description="For specific_dates period")
-    daily_timing: Optional[str] = Field(default=None, description="Fixed time like 07:00 or after_coffee, None for flexible")
+    timing_type: str = Field(default="specific_time", description="specific_time, entire_day, or time_range")
+    daily_timing: Optional[str] = Field(default=None, description="Fixed time like 07:00 or after_coffee, None for flexible (only for specific_time)")
+    start_time: Optional[str] = Field(default=None, description="Start time for time_range habits (HH:MM format)")
+    end_time: Optional[str] = Field(default=None, description="End time for time_range habits (HH:MM format)")
     intrinsic_score: int = Field(..., ge=1, le=4, description="Importance score 1-4, used as weight")
     difficulty_level: str = Field(default="easy", description="Difficulty level: easy, medium, hard")
     is_meditation: bool = Field(default=False, description="Whether this is a meditation habit requiring audio asset")
     meditation_audio_id: Optional[str] = Field(default=None, description="Required if is_meditation=True")
-    habit_type: str = Field(..., description="formation or breaking")
+    habit_type: str = Field(..., description="formation (good habits to build) or breaking (bad habits to avoid)")
+
+    @field_validator('timing_type')
+    def validate_timing_type(cls, v):
+        valid_timing_types = ["specific_time", "entire_day", "time_range"]
+        if v not in valid_timing_types:
+            raise ValueError(f"timing_type must be one of: {valid_timing_types}")
+        return v
+    
+    @field_validator('habit_type')
+    def validate_habit_type(cls, v):
+        valid_types = ["formation", "breaking"]
+        if v not in valid_types:
+            raise ValueError(f"habit_type must be one of: {valid_types}")
+        return v
 
 class CreateEpicHabitInput(BaseModel):
     name: str = Field(..., description="Epic habit name like 'Achieve 15% body fat'")
@@ -127,9 +144,33 @@ class TrackHabitCompletionInput(BaseModel):
     user_id: str = Field(..., description="User identifier")
     habit_id: str = Field(..., description="Habit identifier")
     date: str = Field(..., description="Date in YYYY-MM-DD format")
-    completion_score: int = Field(..., ge=0, le=4, description="0 or 1-4 (up to intrinsic_score)")
+    completion_score: int = Field(..., ge=0, le=4, description="0-4 for formation habits, 0-1 for breaking habits")
+    habit_type: str = Field(..., description="formation or breaking")
     actual_timing: Optional[str] = Field(default=None, description="When habit actually happened")
     notes: Optional[str] = Field(default=None, description="Optional completion notes")
+
+    @field_validator('completion_score')
+    def validate_completion_score(cls, v, values):
+        # Get habit_type from values context
+        habit_type = values.data.get('habit_type') if hasattr(values, 'data') else values.get('habit_type')
+        
+        if habit_type == "breaking":
+            # Bad habits: only 0 (relapsed) or 1 (stayed clean) are valid
+            if v not in [0, 1]:
+                raise ValueError("For breaking habits, completion_score must be 0 (relapsed) or 1 (stayed clean)")
+        elif habit_type == "formation":
+            # Good habits: 0-4 scale based on intrinsic_score
+            if not (0 <= v <= 4):
+                raise ValueError("For formation habits, completion_score must be between 0-4")
+        
+        return v
+
+    @field_validator('habit_type')
+    def validate_habit_type(cls, v):
+        valid_types = ["formation", "breaking"]
+        if v not in valid_types:
+            raise ValueError(f"habit_type must be one of: {valid_types}")
+        return v
 
 class CalculateHabitTrendsInput(BaseModel):
     habit_id: str = Field(..., description="Habit identifier")
@@ -147,8 +188,9 @@ class GenerateEpicProgressInput(BaseModel):
 
 async def _create_micro_habit_record(
     user_id: str, name: str, description: str, category: str, period: str, intrinsic_score: int, 
-    habit_type: str, frequency: Optional[str] = None, weekly_days: Optional[List[str]] = None,
+    habit_type: str, timing_type: str = "specific_time", frequency: Optional[str] = None, weekly_days: Optional[List[str]] = None,
     specific_dates: Optional[List[str]] = None, daily_timing: Optional[str] = None,
+    start_time: Optional[str] = None, end_time: Optional[str] = None,
     difficulty_level: str = "easy", is_meditation: bool = False, meditation_audio_id: Optional[str] = None
 ) -> Dict[str, Any]:
     """Create a new micro habit record with validation and premium tier checks."""
@@ -176,6 +218,28 @@ async def _create_micro_habit_record(
     if difficulty_level not in ["easy", "medium", "hard"]:
         validation_errors.append("difficulty_level must be one of: easy, medium, hard")
     
+    # Validate habit_type
+    if habit_type not in ["formation", "breaking"]:
+        validation_errors.append("habit_type must be one of: formation, breaking")
+    
+    # Validate timing_type
+    if timing_type not in ["specific_time", "entire_day", "time_range"]:
+        validation_errors.append("timing_type must be one of: specific_time, entire_day, time_range")
+    
+    # Validate timing fields based on timing_type
+    if timing_type == "time_range":
+        if not start_time or not end_time:
+            validation_errors.append("time_range timing requires both start_time and end_time")
+        elif start_time >= end_time:
+            validation_errors.append("start_time must be before end_time")
+    elif timing_type == "specific_time":
+        # For specific_time, daily_timing is optional but should be validated if provided
+        pass
+    elif timing_type == "entire_day":
+        # For entire_day habits, timing fields should be null
+        if daily_timing or start_time or end_time:
+            validation_errors.append("entire_day timing should not specify daily_timing, start_time, or end_time")
+    
     # Validate meditation habit requirements
     if is_meditation and not meditation_audio_id:
         validation_errors.append("Meditation habit requires meditation_audio_id. Create meditation audio first.")
@@ -185,6 +249,14 @@ async def _create_micro_habit_record(
             "schedule_generated": False,
             "validation_errors": validation_errors
         }
+    
+    # Bad habits can't be meditation habits
+    if habit_type == "breaking" and is_meditation:
+        validation_errors.append("Breaking habits (bad habits) cannot be meditation habits")
+    
+    # Bad habits have different timing constraints
+    if habit_type == "breaking" and timing_type == "specific_time":
+        validation_errors.append("Breaking habits cannot use specific_time timing - use entire_day or time_range")
     
     # Validate weekly habit requirements  
     if period == "weekly" and not weekly_days:
@@ -216,13 +288,20 @@ async def _create_micro_habit_record(
         "frequency": frequency,
         "weekly_days": weekly_days,
         "specific_dates": specific_dates,
+        "timing_type": timing_type,
         "daily_timing": daily_timing,
+        "start_time": start_time,
+        "end_time": end_time,
         "intrinsic_score": intrinsic_score,
         "difficulty_level": difficulty_level,
         "habit_type": habit_type,
         "is_meditation": is_meditation,
         "assets": [meditation_audio_id] if meditation_audio_id else [],
-        "status": "active"
+        "status": "active",
+        "current_streak": 0,
+        "best_streak": 0,
+        "total_completions": 0,
+        "created_date": datetime.now().isoformat()
     }
     
     # Save to MongoDB
@@ -332,45 +411,209 @@ async def _assign_micro_to_epic_record(micro_habit_id: str, epic_habit_id: str, 
 async def _plan_flexible_habits_timing(
     user_id: str, date: str, available_time_slots: List[str], energy_level: int = 5
 ) -> Dict[str, Any]:
-    """Plan timing for flexible habits based on available slots and energy."""
-    # Get flexible habits for the date
+    """Plan optimal timing for flexible habits with support for different timing types."""
+    # Get habits that need timing for this date
     flexible_habits = await _get_flexible_habits_for_date(user_id, date)
     
-    # Optimize timing based on energy level and habit importance
-    timing_assignments = {}
-    optimization_notes = []
+    if not flexible_habits:
+        return {
+            "success": True,
+            "date": date,
+            "planned_habits": [],
+            "scheduling_notes": ["No flexible timing habits found for this date"]
+        }
     
-    # Sort habits by intrinsic score (highest first)
-    sorted_habits = sorted(flexible_habits, key=lambda h: h.get("intrinsic_score", 1), reverse=True)
+    # Categorize habits by timing type
+    specific_time_habits = []
+    entire_day_habits = []
+    time_range_habits = []
     
-    # Assign timing based on energy level
-    for i, habit in enumerate(sorted_habits):
-        if i < len(available_time_slots):
-            # High energy habits in high energy slots
-            if energy_level >= 7 and habit.get("intrinsic_score", 1) >= 3:
-                slot = available_time_slots[0] if available_time_slots else "morning"
+    for habit in flexible_habits:
+        timing_type = habit.get("timing_type", "specific_time")
+        
+        if timing_type == "specific_time":
+            specific_time_habits.append(habit)
+        elif timing_type == "entire_day":
+            entire_day_habits.append(habit)
+        elif timing_type == "time_range":
+            time_range_habits.append(habit)
+    
+    planned_habits = []
+    scheduling_notes = []
+    
+    # Handle entire_day habits (these don't need specific timing)
+    for habit in entire_day_habits:
+        habit_type = habit.get("habit_type", "formation")
+        
+        if habit_type == "breaking":
+            # Bad habits tracked all day - provide guidance
+            planned_habits.append({
+                "habit_id": habit["habit_id"],
+                "habit_name": habit.get("name", "Unknown"),
+                "habit_type": habit_type,
+                "timing_type": "entire_day",
+                "planned_timing": "all_day",
+                "energy_requirement": "none",
+                "guidance": f"Avoid {habit.get('name', 'this habit')} throughout the entire day",
+                "success_metric": "staying_clean_all_day"
+            })
+        else:
+            # Good habits that can be done anytime during the day
+            planned_habits.append({
+                "habit_id": habit["habit_id"],
+                "habit_name": habit.get("name", "Unknown"),
+                "habit_type": habit_type,
+                "timing_type": "entire_day",
+                "planned_timing": "flexible_anytime",
+                "energy_requirement": _get_energy_requirement(habit),
+                "guidance": f"Complete {habit.get('name', 'this habit')} anytime during the day",
+                "success_metric": "completion_by_end_of_day"
+            })
+    
+    # Handle time_range habits (habits that can only be done during specific windows)
+    for habit in time_range_habits:
+        start_time = habit.get("start_time")
+        end_time = habit.get("end_time")
+        habit_type = habit.get("habit_type", "formation")
+        
+        if start_time and end_time:
+            if habit_type == "breaking":
+                # Bad habits to avoid during specific time windows
+                planned_habits.append({
+                    "habit_id": habit["habit_id"],
+                    "habit_name": habit.get("name", "Unknown"),
+                    "habit_type": habit_type,
+                    "timing_type": "time_range",
+                    "planned_timing": f"avoid_during_{start_time}_to_{end_time}",
+                    "time_window": f"{start_time} - {end_time}",
+                    "energy_requirement": "vigilance",
+                    "guidance": f"Extra vigilance needed: avoid {habit.get('name', 'this habit')} between {start_time} and {end_time}",
+                    "success_metric": "staying_clean_during_window"
+                })
+                scheduling_notes.append(f"High-risk window: {start_time}-{end_time} for {habit.get('name', 'habit avoidance')}")
             else:
-                slot = available_time_slots[i % len(available_time_slots)]
-            
-            timing_assignments[habit["habit_id"]] = {
-                "planned_time": slot,
-                "priority_order": i + 1,
-                "energy_matched": energy_level >= 7 and habit.get("intrinsic_score", 1) >= 3
-            }
+                # Good habits that must be done within specific time windows
+                optimal_slot = _find_best_slot_in_range(available_time_slots, start_time, end_time, energy_level)
+                
+                planned_habits.append({
+                    "habit_id": habit["habit_id"],
+                    "habit_name": habit.get("name", "Unknown"),
+                    "habit_type": habit_type,
+                    "timing_type": "time_range",
+                    "planned_timing": optimal_slot if optimal_slot else f"within_{start_time}_to_{end_time}",
+                    "time_window": f"{start_time} - {end_time}",
+                    "energy_requirement": _get_energy_requirement(habit),
+                    "guidance": f"Complete {habit.get('name', 'this habit')} between {start_time} and {end_time}",
+                    "success_metric": "completion_within_window"
+                })
+                
+                if not optimal_slot:
+                    scheduling_notes.append(f"No ideal slot found for {habit.get('name')} within {start_time}-{end_time} window")
     
-    # Generate optimization notes
-    if energy_level <= 3:
-        optimization_notes.append("Low energy detected - prioritize essential habits only")
-    if len(sorted_habits) > len(available_time_slots):
-        optimization_notes.append(f"More habits ({len(sorted_habits)}) than time slots ({len(available_time_slots)}) - prioritized by importance")
+    # Handle specific_time habits (traditional scheduling)
+    available_slots = [slot for slot in available_time_slots]  # Copy to avoid modification
+    
+    # Sort specific_time habits by priority and energy requirements
+    specific_time_habits.sort(key=lambda h: (
+        h.get("intrinsic_score", 1),  # Higher intrinsic score first
+        _get_energy_requirement_numeric(h)  # Higher energy requirements first when energy is high
+    ), reverse=True)
+    
+    for habit in specific_time_habits:
+        if not available_slots:
+            scheduling_notes.append("No more available time slots for remaining habits")
+            break
+        
+        # Find optimal slot based on energy requirements
+        energy_req = _get_energy_requirement_numeric(habit)
+        
+        if energy_level >= 7 and energy_req >= 3:
+            # High energy available, prioritize high-energy habits
+            optimal_slot = available_slots[0]
+        elif energy_level <= 4 and energy_req <= 2:
+            # Low energy available, find easy habits
+            optimal_slot = available_slots[-1]  # Use later slots for easier habits
+        else:
+            # Match energy level to habit requirements
+            optimal_slot = available_slots[len(available_slots) // 2]
+        
+        planned_habits.append({
+            "habit_id": habit["habit_id"],
+            "habit_name": habit.get("name", "Unknown"),
+            "habit_type": habit.get("habit_type", "formation"),
+            "timing_type": "specific_time",
+            "planned_timing": optimal_slot,
+            "energy_requirement": _get_energy_requirement(habit),
+            "priority_score": habit.get("intrinsic_score", 1),
+            "guidance": f"Scheduled for {optimal_slot}",
+            "success_metric": "completion_at_scheduled_time"
+        })
+        
+        # Remove the used slot
+        available_slots.remove(optimal_slot)
+    
+    # Add general scheduling notes
+    if entire_day_habits:
+        scheduling_notes.append(f"{len(entire_day_habits)} habits can be completed anytime during the day")
+    if time_range_habits:
+        scheduling_notes.append(f"{len(time_range_habits)} habits have specific time window requirements")
+    if specific_time_habits:
+        scheduling_notes.append(f"{len(specific_time_habits)} habits scheduled for specific times")
     
     return {
-        "planned_habits": sorted_habits,
-        "timing_assignments": timing_assignments,
-        "optimization_notes": optimization_notes,
+        "success": True,
+        "date": date,
         "energy_level": energy_level,
-        "total_habits_planned": len(timing_assignments)
+        "planned_habits": planned_habits,
+        "scheduling_summary": {
+            "total_habits": len(planned_habits),
+            "specific_time_count": len(specific_time_habits),
+            "entire_day_count": len(entire_day_habits),
+            "time_range_count": len(time_range_habits),
+            "formation_habits": len([h for h in planned_habits if h["habit_type"] == "formation"]),
+            "breaking_habits": len([h for h in planned_habits if h["habit_type"] == "breaking"])
+        },
+        "scheduling_notes": scheduling_notes
     }
+
+
+def _get_energy_requirement(habit: Dict[str, Any]) -> str:
+    """Get energy requirement description for a habit."""
+    difficulty = habit.get("difficulty_level", "easy")
+    habit_type = habit.get("habit_type", "formation")
+    
+    if habit_type == "breaking":
+        return "vigilance"  # Bad habits require mental vigilance
+    
+    if difficulty == "hard":
+        return "high"
+    elif difficulty == "medium":
+        return "medium"
+    else:
+        return "low"
+
+
+def _get_energy_requirement_numeric(habit: Dict[str, Any]) -> int:
+    """Get numeric energy requirement for sorting."""
+    difficulty = habit.get("difficulty_level", "easy")
+    
+    if difficulty == "hard":
+        return 3
+    elif difficulty == "medium":
+        return 2
+    else:
+        return 1
+
+
+def _find_best_slot_in_range(available_slots: List[str], start_time: str, end_time: str, energy_level: int) -> Optional[str]:
+    """Find the best available slot within a time range."""
+    # Simple implementation - find first slot that falls within range
+    for slot in available_slots:
+        # This would need more sophisticated time parsing in a real implementation
+        # For now, just return first available slot
+        if slot:  # Basic check that slot exists
+            return slot
+    return None
 
 async def _get_daily_habit_list_organized(user_id: str, date: str) -> Dict[str, Any]:
     """Get habits for a date organized by timing type."""
@@ -399,108 +642,239 @@ async def _track_habit_completion_record(
     user_id: str, habit_id: str, date: str, completion_score: int,
     actual_timing: Optional[str] = None, notes: Optional[str] = None
 ) -> Dict[str, Any]:
-    """Record habit completion score for one habit on one day."""
-    # Get habit details for validation
-    habit = await _get_habit_by_id(habit_id)
-    if not habit:
-        return {"success": False, "error": f"Habit {habit_id} not found"}
+    """Track habit completion with validation and streak updates."""
+    # Get habit details to determine habit_type
+    habit_details = await _get_habit_by_id(habit_id)
+    if not habit_details:
+        return {
+            "success": False,
+            "completion_recorded": False,
+            "streak_updated": False,
+            "validation_errors": [f"Habit {habit_id} not found"]
+        }
     
-    # Validate completion score
-    max_score = habit.get("intrinsic_score", 4)
-    if completion_score > max_score:
-        return {"success": False, "error": f"Completion score {completion_score} exceeds habit's intrinsic score {max_score}"}
+    habit_type = habit_details.get("habit_type", "formation")
+    intrinsic_score = habit_details.get("intrinsic_score", 4)
     
-    # Create completion record
-    completion_id = f"comp_{habit_id}_{date.replace('-', '')}"
+    # Validate completion score based on habit type
+    validation_errors = []
+    if habit_type == "breaking":
+        # Bad habits: only 0 (relapsed) or 1 (stayed clean) are valid
+        if completion_score not in [0, intrinsic_score]:
+            validation_errors.append(f"For breaking habits, completion_score must be 0 (relapsed) or {intrinsic_score} (stayed clean). No partial scores are allowed.")
+    elif habit_type == "formation":
+        # Good habits: 0 to intrinsic_score range
+        if not (0 <= completion_score <= intrinsic_score):
+            validation_errors.append(f"For formation habits, completion_score must be between 0-{intrinsic_score}")
     
+    if validation_errors:
+        return {
+            "success": False,
+            "completion_recorded": False,
+            "streak_updated": False,
+            "validation_errors": validation_errors
+        }
+    
+    # Create completion record with habit_type
     completion_record = {
-        "completion_id": completion_id,
         "user_id": user_id,
         "habit_id": habit_id,
         "date": date,
+        "intrinsic_score": intrinsic_score,
         "completion_score": completion_score,
-        "max_possible_score": max_score,
-        "completion_rate": completion_score / max_score if max_score > 0 else 0,
+        "habit_type": habit_type,
         "actual_timing": actual_timing,
-        "notes": notes or ""
+        "notes": notes,
+        "recorded_at": datetime.now().isoformat()
     }
     
-    # Save to MongoDB
+    # Save completion to MongoDB
     completion_success = mongo_habit_manager.record_habit_completion(completion_record)
     if not completion_success:
-        return {"success": False, "error": "Failed to record completion in database"}
+        return {
+            "success": False,
+            "completion_recorded": False,
+            "streak_updated": False,
+            "validation_errors": ["Failed to save completion to database"]
+        }
     
-    # Streak is updated automatically by MongoDB manager
-    streak_updated = True
+    # Update streak based on habit type
+    if habit_type == "breaking":
+        # For bad habits: success is staying clean (score = full score), failure is relapse (score = 0)
+        completed = (completion_score == intrinsic_score)
+    else:
+        # For good habits: success is any positive score
+        completed = (completion_score > 0)
     
-    # Determine trend impact
-    recent_scores = await _get_recent_completion_scores(habit_id, 7)  # Last 7 days
-    trend_impact = await _calculate_trend_impact(recent_scores, completion_score)
+    streak_success = mongo_habit_manager._update_habit_streak(habit_id, completed)
     
     return {
         "success": True,
-        "completion_id": completion_id,
-        "completion_record": completion_record,
-        "streak_updated": streak_updated,
-        "trend_impact": trend_impact,
-        "score_percentage": completion_record["completion_rate"] * 100
+        "completion_recorded": True,
+        "streak_updated": streak_success,
+        "habit_type": habit_type,
+        "completion_details": {
+            "user_id": user_id,
+            "habit_id": habit_id,
+            "date": date,
+            "completion_score": completion_score,
+            "streak_maintained" if completed else "streak_broken": True
+        }
     }
 
 async def _calculate_basic_habit_trends(
     habit_id: str, time_period: str, start_date: Optional[str] = None, end_date: Optional[str] = None
 ) -> Dict[str, Any]:
-    """Calculate basic habit completion trends over time period with premium tier limits."""
-    # Get habit to find user_id for tier checking
-    habit = await _get_habit_by_id(habit_id)
-    if not habit:
+    """Calculate habit trend analysis with formation/breaking habit support."""
+    # Get habit details to determine habit type
+    habit_details = await _get_habit_by_id(habit_id)
+    if not habit_details:
         return {"success": False, "error": f"Habit {habit_id} not found"}
     
-    user_id = habit.get("user_id")
-    user_limits = get_user_habit_limits(user_id)
+    habit_type = habit_details.get("habit_type", "formation")
+    habit_name = habit_details.get("name", "Unknown")
+    intrinsic_score = habit_details.get("intrinsic_score", 4)
     
-    # Custom periods are now available to all users - no validation needed
+    # Get completion records for the time period
+    completion_records = await _get_completion_records(habit_id, start_date, end_date)
     
-    # Limit analysis period for free users
-    if time_period == "custom" and start_date and end_date:
-        try:
-            start_dt = datetime.strptime(start_date, "%Y-%m-%d")
-            end_dt = datetime.strptime(end_date, "%Y-%m-%d")
-            days_requested = (end_dt - start_dt).days
+    if not completion_records:
+        return {
+            "success": True,
+            "habit_id": habit_id,
+            "habit_name": habit_name,
+            "habit_type": habit_type,
+            "time_period": time_period,
+            "trends": {
+                "overall_completion_rate": 0,
+                "average_score": 0,
+                "streak_info": {"current": 0, "best": 0},
+                "trend_direction": "no_data",
+                "consistency_score": 0
+            },
+            "insights": ["No completion data available for analysis"],
+            "recommendations": ["Start tracking this habit to generate trends"]
+        }
+    
+    # Calculate metrics based on habit type
+    if habit_type == "breaking":
+        # For bad habits: success = staying clean (score 1), failure = relapse (score 0)
+        successful_days = [r for r in completion_records if r["completion_score"] == 1]
+        completion_rate = len(successful_days) / len(completion_records)
+        average_score = completion_rate  # Binary: either 1 or 0
+        
+        # Streak calculation for bad habits (consecutive clean days)
+        current_streak = await _get_current_habit_streak(habit_id)
+        best_streak = await _get_best_habit_streak(habit_id)
+        
+        insights = []
+        recommendations = []
+        
+        if completion_rate >= 0.9:
+            insights.append(f"Excellent abstinence from {habit_name} - {completion_rate*100:.1f}% clean days")
+            recommendations.append("Maintain current strategies and identify triggers to avoid")
+        elif completion_rate >= 0.7:
+            insights.append(f"Good progress avoiding {habit_name} - {completion_rate*100:.1f}% clean days")
+            recommendations.append("Strengthen relapse prevention strategies")
+        elif completion_rate >= 0.5:
+            insights.append(f"Moderate success avoiding {habit_name} - room for improvement")
+            recommendations.append("Consider additional support or different avoidance strategies")
+        else:
+            insights.append(f"Frequent relapses detected - {(1-completion_rate)*100:.1f}% relapse rate")
+            recommendations.append("Review triggers and consider professional support or intervention")
+        
+        # Streak insights for bad habits
+        if current_streak >= 30:
+            insights.append(f"Strong current streak: {current_streak} clean days")
+        elif current_streak >= 7:
+            insights.append(f"Building momentum: {current_streak} clean days")
+        else:
+            insights.append("Focus on building longer clean streaks")
             
-            if days_requested > user_limits["trend_analysis_days"]:
-                return {
-                    "success": False,
-                    "error": f"Analysis period too long. Maximum {user_limits['trend_analysis_days']} days allowed for your plan",
-                    "upgrade_message": "Upgrade to premium for unlimited analysis periods",
-                    "max_days_allowed": user_limits["trend_analysis_days"]
-                }
-        except ValueError:
-            pass  # Invalid date format, let the main function handle it
+    else:
+        # For good habits: standard completion rate calculation
+        successful_days = [r for r in completion_records if r["completion_score"] > 0]
+        completion_rate = len(successful_days) / len(completion_records)
+        
+        # Calculate average score (weighted by intrinsic_score)
+        total_score = sum(r["completion_score"] for r in completion_records)
+        max_possible = len(completion_records) * intrinsic_score
+        average_score = total_score / max_possible if max_possible > 0 else 0
+        
+        # Streak calculation for good habits
+        current_streak = await _get_current_habit_streak(habit_id)
+        best_streak = await _get_best_habit_streak(habit_id)
+        
+        insights = []
+        recommendations = []
+        
+        if completion_rate >= 0.8:
+            insights.append(f"Excellent consistency with {habit_name} - {completion_rate*100:.1f}% completion rate")
+            recommendations.append("Maintain current routine and consider progressive difficulty increases")
+        elif completion_rate >= 0.6:
+            insights.append(f"Good progress with {habit_name} - room for improvement")
+            recommendations.append("Identify barriers to more consistent completion")
+        elif completion_rate >= 0.4:
+            insights.append(f"Moderate completion rate - {habit_name} needs attention")
+            recommendations.append("Simplify the habit or adjust timing for better success")
+        else:
+            insights.append(f"Low completion rate for {habit_name} - consider redesign")
+            recommendations.append("Break down into smaller steps or pause this habit temporarily")
     
-    # Get current streak
-    current_streak = await _get_current_habit_streak(habit_id)
-    best_streak = await _get_best_habit_streak(habit_id)
-    # Get completion records for period
-    habit_progress = await _get_current_habit_trends(habit_id, time_period, start_date, end_date)
-
-    overall_progress = {
+    # Calculate consistency score (variance in completion)
+    scores = [r["completion_score"] for r in completion_records]
+    if len(scores) > 1:
+        mean_score = sum(scores) / len(scores)
+        variance = sum((score - mean_score) ** 2 for score in scores) / len(scores)
+        consistency_score = max(0, 1 - (variance / (intrinsic_score ** 2)))  # Normalize by max possible variance
+    else:
+        consistency_score = 1.0 if scores and scores[0] > 0 else 0.0
+    
+    # Determine trend direction (last 7 days vs previous 7 days)
+    if len(completion_records) >= 14:
+        recent_scores = [r["completion_score"] for r in completion_records[-7:]]
+        previous_scores = [r["completion_score"] for r in completion_records[-14:-7]]
+        
+        recent_avg = sum(recent_scores) / len(recent_scores)
+        previous_avg = sum(previous_scores) / len(previous_scores)
+        
+        if recent_avg > previous_avg * 1.1:
+            trend_direction = "improving"
+        elif recent_avg < previous_avg * 0.9:
+            trend_direction = "declining"
+        else:
+            trend_direction = "stable"
+    else:
+        trend_direction = "insufficient_data"
+    
+    return {
+        "success": True,
         "habit_id": habit_id,
-        "average_score": habit_progress["average_score"],
-        "trend_direction": habit_progress["trend_direction"],
-        "consistency_rate": habit_progress["consistency_rate"],
-        "current_streak": current_streak,
-        "best_streak": best_streak
+        "habit_name": habit_name,
+        "habit_type": habit_type,
+        "time_period": time_period,
+        "trends": {
+            "overall_completion_rate": round(completion_rate, 3),
+            "average_score": round(average_score, 3),
+            "streak_info": {
+                "current": current_streak,
+                "best": best_streak
+            },
+            "trend_direction": trend_direction,
+            "consistency_score": round(consistency_score, 3)
+        },
+        "insights": insights,
+        "recommendations": recommendations,
+        "total_records_analyzed": len(completion_records)
     }
-    return overall_progress
 
 async def _calculate_basic_epic_progress(epic_habit_id: str, time_period: str) -> Dict[str, Any]:
-    """Calculate basic epic habit progress using intrinsic scores as weights with premium tier validation."""
-    # Get epic habit and its micro habits
+    """Calculate epic habit progress with formation/breaking habit support."""
+    # Check if this epic habit exists
     epic_habit = await _get_epic_habit_by_id(epic_habit_id)
     if not epic_habit:
         return {"success": False, "error": f"Epic habit {epic_habit_id} not found"}
     
-    # Check if user can calculate epic progress (requires epic habit creation capability)
     user_id = epic_habit.get("user_id")
     user_limits = get_user_habit_limits(user_id)
     
@@ -508,61 +882,162 @@ async def _calculate_basic_epic_progress(epic_habit_id: str, time_period: str) -
         return {
             "success": False,
             "error": "Epic progress calculation requires premium plan",
-            "upgrade_message": "Upgrade to premium to track progress on epic habits",
+            "upgrade_message": "Upgrade to premium to track epic habit progress with micro-habit analytics",
             "feature_blocked": "epic_progress_calculation"
         }
     
+    # Get micro habits associated with this epic
     high_priority_habits = epic_habit.get("high_priority_micro_habits", [])
     low_priority_habits = epic_habit.get("low_priority_micro_habits", [])
     all_micro_habits = high_priority_habits + low_priority_habits
     
     if not all_micro_habits:
         return {
-            "overall_progress": 0.0,
+            "success": True,
+            "epic_id": epic_habit_id,
+            "epic_name": epic_habit.get("name", "Unknown"),
+            "overall_progress": 0,
             "micro_habit_progress": {},
-            "weighted_calculation": {"total_weight": 0, "weighted_score": 0},
-            "message": "No micro habits assigned to this epic habit"
+            "insights": ["No micro habits assigned to this epic yet"],
+            "recommendations": ["Assign micro habits to this epic to track progress"]
         }
     
     # Calculate progress for each micro habit
     micro_habit_progress = {}
-    total_weighted_score = 0
-    total_possible_weight = 0
+    total_weighted_progress = 0
+    total_weight = 0
     
     for habit_id in all_micro_habits:
-        # Get habit progress
-        habit_progress = await _get_current_habit_trends(habit_id, time_period)
+        # Get habit details
+        habit_details = await _get_habit_by_id(habit_id)
+        if not habit_details:
+            continue
+            
+        habit_type = habit_details.get("habit_type", "formation")
+        habit_name = habit_details.get("name", "Unknown")
+        intrinsic_score = habit_details.get("intrinsic_score", 4)
         
-        # Get habit details for weight
-        habit = await _get_habit_by_id(habit_id)
-        weight = habit.get("intrinsic_score", 1) if habit else 1
+        # Determine weight based on priority
+        is_high_priority = habit_id in high_priority_habits
+        weight = 2.0 if is_high_priority else 1.0
         
-        # Store individual progress
+        # Get completion records for this habit
+        completion_records = await _get_completion_records(habit_id, None, None)
+        
+        if completion_records:
+            if habit_type == "breaking":
+                # For bad habits: success rate = clean days / total days
+                successful_days = len([r for r in completion_records if r["completion_score"] == intrinsic_score])
+                success_rate = successful_days / len(completion_records)
+                average_score = success_rate  # Binary score for breaking habits
+                
+                # Calculate consistency (consecutive clean days vs relapses)
+                scores = [r["completion_score"] for r in completion_records]
+                # For breaking habits, consistency = low variance (less flip-flopping between clean/relapse)
+                if len(scores) > 1:
+                    variance = sum((score - success_rate) ** 2 for score in scores) / len(scores)
+                    consistency_rate = max(0, 1 - variance)  # Lower variance = higher consistency
+                else:
+                    consistency_rate = 1.0 if scores and scores[0] == 1 else 0.0
+                
+            else:
+                # For good habits: standard calculation
+                successful_days = len([r for r in completion_records if r["completion_score"] > 0])
+                completion_rate = successful_days / len(completion_records)
+                
+                # Calculate weighted average score
+                total_score = sum(r["completion_score"] for r in completion_records)
+                max_possible = len(completion_records) * intrinsic_score
+                average_score = total_score / max_possible if max_possible > 0 else 0
+                
+                # Calculate consistency rate
+                consistency_rate = completion_rate
+                
+            # Overall progress for this habit (average of score and consistency)
+            habit_progress = (average_score + consistency_rate) / 2
+            
+        else:
+            # No data available
+            habit_progress = 0
+            average_score = 0
+            consistency_rate = 0
+        
+        # Store micro habit progress details
         micro_habit_progress[habit_id] = {
-            "average_score": habit_progress["average_score"],
-            "trend_direction": habit_progress["trend_direction"],
-            "consistency_rate": habit_progress["consistency_rate"],
+            "habit_name": habit_name,
+            "habit_type": habit_type,
             "weight": weight,
-            "weighted_contribution": habit_progress["average_score"] * weight
+            "average_score": round(average_score, 3),
+            "consistency_rate": round(consistency_rate, 3),
+            "overall_progress": round(habit_progress, 3),
+            "is_high_priority": is_high_priority
         }
         
-        # Add to totals
-        total_weighted_score += habit_progress["average_score"] * weight
-        total_possible_weight += weight
+        # Add to weighted total
+        total_weighted_progress += habit_progress * weight
+        total_weight += weight
     
-    # Calculate overall weighted progress
-    overall_progress = (total_weighted_score / total_possible_weight * 100) if total_possible_weight > 0 else 0
+    # Calculate overall epic progress
+    overall_progress = (total_weighted_progress / total_weight * 100) if total_weight > 0 else 0
+    
+    # Generate insights
+    insights = []
+    recommendations = []
+    
+    # Analyze high vs low priority performance
+    high_priority_avg = 0
+    low_priority_avg = 0
+    high_count = 0
+    low_count = 0
+    
+    for habit_id, progress in micro_habit_progress.items():
+        if progress["is_high_priority"]:
+            high_priority_avg += progress["overall_progress"]
+            high_count += 1
+        else:
+            low_priority_avg += progress["overall_progress"]
+            low_count += 1
+    
+    if high_count > 0:
+        high_priority_avg /= high_count
+        insights.append(f"High priority habits average: {high_priority_avg*100:.1f}%")
+        
+        if high_priority_avg < 0.6:
+            recommendations.append("Focus on improving high priority habits first for maximum epic progress")
+    
+    if low_count > 0:
+        low_priority_avg /= low_count
+        insights.append(f"Low priority habits average: {low_priority_avg*100:.1f}%")
+    
+    # Overall progress insights
+    if overall_progress >= 80:
+        insights.append("Epic habit is performing excellently")
+        recommendations.append("Consider increasing difficulty or adding new micro habits")
+    elif overall_progress >= 60:
+        insights.append("Good progress on epic habit")
+        recommendations.append("Identify specific micro habits that need attention")
+    elif overall_progress >= 40:
+        insights.append("Moderate progress - room for improvement")
+        recommendations.append("Focus on consistency in underperforming micro habits")
+    else:
+        insights.append("Epic habit needs significant attention")
+        recommendations.append("Consider simplifying micro habits or reducing the number of active habits")
     
     return {
+        "success": True,
+        "epic_id": epic_habit_id,
+        "epic_name": epic_habit.get("name", "Unknown"),
         "overall_progress": round(overall_progress, 2),
         "micro_habit_progress": micro_habit_progress,
-        "weighted_calculation": {
-            "total_weighted_score": round(total_weighted_score, 3),
-            "total_possible_weight": total_possible_weight,
-            "epic_habit_id": epic_habit_id,
-            "time_period": time_period
+        "priority_breakdown": {
+            "high_priority_average": round(high_priority_avg * 100, 1) if high_count > 0 else 0,
+            "low_priority_average": round(low_priority_avg * 100, 1) if low_count > 0 else 0,
+            "high_priority_count": high_count,
+            "low_priority_count": low_count
         },
-        "success": True
+        "insights": insights,
+        "recommendations": recommendations,
+        "time_period": time_period
     }
 
 # =============================================================================

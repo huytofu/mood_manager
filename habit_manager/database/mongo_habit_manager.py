@@ -136,7 +136,7 @@ class MongoHabitManager:
             micro_habits_schema = {
                 "$jsonSchema": {
                     "bsonType": "object",
-                    "required": ["habit_id", "user_id", "name", "category", "period", "intrinsic_score", "habit_type", "status"],
+                    "required": ["habit_id", "user_id", "name", "category", "period", "intrinsic_score", "habit_type", "timing_type", "status"],
                     "properties": {
                         "habit_id": {"bsonType": "string", "minLength": 1},
                         "user_id": {"bsonType": "string", "minLength": 1},
@@ -147,6 +147,9 @@ class MongoHabitManager:
                         "intrinsic_score": {"bsonType": "int", "minimum": 1, "maximum": 4},
                         "difficulty_level": {"bsonType": "string", "enum": ["easy", "medium", "hard"]},
                         "habit_type": {"bsonType": "string", "enum": ["formation", "breaking"]},
+                        "timing_type": {"bsonType": "string", "enum": ["specific_time", "entire_day", "time_range"]},
+                        "start_time": {"bsonType": ["string", "null"], "pattern": "^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$"},
+                        "end_time": {"bsonType": ["string", "null"], "pattern": "^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$"},
                         "status": {"bsonType": "string", "enum": ["active", "paused", "completed", "archived"]},
                         "current_streak": {"bsonType": "int", "minimum": 0},
                         "best_streak": {"bsonType": "int", "minimum": 0},
@@ -186,12 +189,13 @@ class MongoHabitManager:
             completions_schema = {
                 "$jsonSchema": {
                     "bsonType": "object",
-                    "required": ["user_id", "habit_id", "date", "completion_score"],
+                    "required": ["user_id", "habit_id", "date", "completion_score", "habit_type"],
                     "properties": {
                         "user_id": {"bsonType": "string", "minLength": 1},
                         "habit_id": {"bsonType": "string", "minLength": 1},
                         "date": {"bsonType": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"},
                         "completion_score": {"bsonType": "int", "minimum": 0, "maximum": 4},
+                        "habit_type": {"bsonType": "string", "enum": ["formation", "breaking"]},
                         "actual_timing": {"bsonType": ["string", "null"]},
                         "notes": {"bsonType": ["string", "null"], "maxLength": 500}
                     }

@@ -21,14 +21,17 @@ class MicroHabitDocument(BaseModel):
     period: str = Field(..., description="Habit frequency period")
     intrinsic_score: int = Field(..., description="Intrinsic motivation score", ge=1, le=4)
     difficulty_level: str = Field(default="easy", description="Difficulty level for progressive overload")
-    habit_type: str = Field(..., description="Type of habit")
+    habit_type: str = Field(..., description="Type of habit: formation (good habits) or breaking (bad habits)")
+    timing_type: str = Field(default="specific_time", description="Timing type: specific_time, entire_day, time_range")
+    start_time: Optional[str] = Field(None, description="Start time for time_range habits (HH:MM format)")
+    end_time: Optional[str] = Field(None, description="End time for time_range habits (HH:MM format)")
     status: str = Field(default="active", description="Habit status")
     current_streak: int = Field(default=0, description="Current streak count", ge=0)
     best_streak: int = Field(default=0, description="Best streak achieved", ge=0)
     total_completions: int = Field(default=0, description="Total completions", ge=0)
     weekly_days: Optional[List[str]] = Field(None, description="Days of week for weekly habits")
     specific_dates: Optional[List[str]] = Field(None, description="Specific dates for scheduled habits")
-    daily_timing: Optional[str] = Field(None, description="Preferred timing for daily habits")
+    daily_timing: Optional[str] = Field(None, description="Preferred timing for specific_time habits")
     is_meditation: Optional[bool] = Field(None, description="Whether this is a meditation habit")
     epic_habit_id: Optional[str] = Field(None, description="Associated epic habit ID")
     priority_within_epic: Optional[str] = Field(None, description="Priority within epic habit")
@@ -60,6 +63,13 @@ class MicroHabitDocument(BaseModel):
         valid_types = ["formation", "breaking"]
         if v not in valid_types:
             raise ValueError(f"habit_type must be one of: {valid_types}")
+        return v
+    
+    @field_validator('timing_type')
+    def validate_timing_type(cls, v):
+        valid_timing_types = ["specific_time", "entire_day", "time_range"]
+        if v not in valid_timing_types:
+            raise ValueError(f"timing_type must be one of: {valid_timing_types}")
         return v
     
     @field_validator('status')
@@ -106,10 +116,35 @@ class HabitCompletionDocument(BaseModel):
     user_id: str = Field(..., description="User identifier", min_length=1)
     habit_id: str = Field(..., description="Habit identifier", min_length=1)
     date: str = Field(..., description="Completion date", regex=r"^[0-9]{4}-[0-9]{2}-[0-9]{2}$")
-    completion_score: int = Field(..., description="Completion score", ge=0, le=4)
+    intrinsic_score: int = Field(..., description="Intrinsic score")
+    completion_score: int = Field(..., description="Completion score: 0-4 for formation habits, 0 or intrinsic_score for breaking habits", ge=0, le=4)
+    habit_type: str = Field(..., description="Type of habit: formation or breaking")
     actual_timing: Optional[str] = Field(None, description="Actual completion timing")
     notes: Optional[str] = Field(None, description="Completion notes", max_length=500)
     recorded_at: str = Field(..., description="Recording timestamp ISO string")
+    
+    @field_validator('completion_score')
+    def validate_completion_score(cls, v, values):
+        # Get habit_type from values context
+        habit_type = values.data.get('habit_type') if hasattr(values, 'data') else values.get('habit_type')
+        
+        if habit_type == "breaking":
+            # Bad habits: only 0 (relapsed) or full score (stayed clean) are valid
+            if not (0 <= v <= 4):
+                raise ValueError("For breaking habits, completion_score must be 0 (relapsed) or full score (stayed clean)")
+        elif habit_type == "formation":
+            # Good habits: 0-4 scale based on intrinsic_score
+            if not (0 <= v <= 4):
+                raise ValueError("For formation habits, completion_score must be between 0-4")
+        
+        return v
+    
+    @field_validator('habit_type')
+    def validate_habit_type(cls, v):
+        valid_types = ["formation", "breaking"]
+        if v not in valid_types:
+            raise ValueError(f"habit_type must be one of: {valid_types}")
+        return v
 
 
 class DateRecordDocument(BaseModel):
