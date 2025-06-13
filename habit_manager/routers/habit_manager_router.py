@@ -52,7 +52,7 @@ async def get_brain_capabilities():
     return {
         "manager": "Habit Manager",
         "version": "1.0",
-        "description": "AI-powered behavioral change specialist for habit formation, breaking bad habits, and addiction recovery. Uses LLM knowledge for general recommendations, specialized tools for crisis mood support.",
+        "description": "AI-powered behavioral change specialist for habit formation, breaking bad habits, and addiction recovery. Supports both formation habits (building positive behaviors) and breaking habits (eliminating negative patterns) with distinct scoring systems and timing modes.",
         
         # Core behavioral interventions the habit manager can perform
         "core_interventions": [
@@ -70,15 +70,17 @@ async def get_brain_capabilities():
             },
             {
                 "name": "Bad Habit Breaking & Addiction Recovery", 
-                "description": "Design strategies to break destructive patterns and support addiction recovery",
+                "description": "Design strategies to break destructive patterns using breaking habits (abstinence tracking) and formation habits (replacement behaviors)",
                 "input_examples": {
                     "user_id": "user123",
                     "intent": "I need to quit social media addiction and reduce screen time",
                     "current_habits": ["social media 3hrs/day", "binge watching"],
+                    "desired_breaking_habits": ["avoid social media during work hours", "no phone in bedroom"],
+                    "desired_formation_habits": ["read instead of scrolling", "evening walk"],
                     "habit_failures": ["tried digital detox 3 times"],
                     "priority": "addiction_recovery"
                 },
-                "output": "Replacement behaviors, environment design, harm reduction protocols, and relapse prevention"
+                "output": "Breaking habits with abstinence tracking (0 or full score), formation habits for replacement behaviors, environment design, and relapse prevention protocols"
             },
             {
                 "name": "Underperforming Habit Analysis",
@@ -137,6 +139,27 @@ async def get_brain_capabilities():
         
         # Behavioral science principles
         "behavioral_science": {
+            "habit_system": {
+                "formation_habits": {
+                    "purpose": "Building positive behaviors",
+                    "scoring": "0-4 scale based on intrinsic_score (partial completion allowed)",
+                    "success_criteria": "Any score > 0 counts as success for streaks",
+                    "examples": ["exercise", "meditation", "reading", "healthy eating"],
+                    "timing_types": ["specific_time", "entire_day", "time_range"]
+                },
+                "breaking_habits": {
+                    "purpose": "Eliminating negative behaviors",
+                    "scoring": "0 (relapsed) or intrinsic_score (stayed clean) - NO partial completion", 
+                    "success_criteria": "Only full intrinsic_score counts as success for streaks",
+                    "examples": ["avoiding social media", "not smoking", "no compulsive phone checking"],
+                    "timing_types": ["entire_day", "time_range"]
+                },
+                "timing_modes": {
+                    "specific_time": "Fixed daily timing (formation only) - e.g., '07:00' for morning workout",
+                    "entire_day": "Flexible window - Formation: complete anytime, Breaking: avoid all day",
+                    "time_range": "Targeted window - Formation: complete within range, Breaking: vigilance period"
+                }
+            },
             "habit_formation_principles": [
                 "Start Small (2-minute rule)",
                 "Environment Design (obvious cues, invisible friction)",
@@ -263,11 +286,18 @@ async def get_available_tools():
             {
                 "name": "main_habit_operations", 
                 "category": "basic_operations",
-                "purpose": "Execute core habit creation and epic goal management",
+                "purpose": "Execute core habit creation and epic goal management with support for formation/breaking habits",
                 "inputs": ["operation: str", "params: dict"],
                 "outputs": ["success: bool", "data: dict", "operation: str", "error: str"],
                 "operations": ["create_micro_habit", "create_epic_habit", "assign_micro_to_epic"],
-                "usage": "Primary tool for habit formation and goal structure creation"
+                "create_micro_habit_params": {
+                    "required": ["user_id", "name", "category", "habit_type", "intrinsic_score", "timing_type"],
+                    "optional": ["daily_timing", "start_time", "end_time", "scheduling", "difficulty_level"],
+                    "habit_type": "formation (building positive) or breaking (eliminating negative)",
+                    "timing_type": "specific_time (formation only), entire_day, or time_range",
+                    "intrinsic_score": "1-4 weight for importance and epic progress calculation"
+                },
+                "usage": "Primary tool for habit formation and goal structure creation with dual habit system support"
             },
             {
                 "name": "daily_execution_operations",
@@ -281,11 +311,16 @@ async def get_available_tools():
             {
                 "name": "progress_tracking_operations",
                 "category": "basic_operations", 
-                "purpose": "Track habit completion and calculate progress metrics",
+                "purpose": "Track habit completion and calculate progress metrics with formation/breaking habit scoring",
                 "inputs": ["operation: str", "params: dict"],
                 "outputs": ["success: bool", "data: dict", "operation: str", "error: str"],
                 "operations": ["track_completion", "calculate_trends", "calculate_epic_progress"],
-                "usage": "Performance monitoring and progress analytics"
+                "track_completion_scoring": {
+                    "formation_habits": "0-4 scale based on intrinsic_score (partial completion allowed)",
+                    "breaking_habits": "0 (relapsed) or intrinsic_score (stayed clean) only",
+                    "success_criteria": "Formation: any score > 0, Breaking: full intrinsic_score only"
+                },
+                "usage": "Performance monitoring and progress analytics with habit-type-aware scoring"
             },
             {
                 "name": "analyze_underperforming_habits",
@@ -322,10 +357,11 @@ async def get_available_tools():
             {
                 "name": "generate_habit_insights",
                 "category": "advanced_analytics",
-                "purpose": "Comprehensive behavioral analysis and optimization insights (ALWAYS FINAL STEP)",
-                "inputs": ["user_id: str", "habit_id: str", "insight_type: str"],
-                "outputs": ["insights: list", "patterns: dict", "recommendations: list"],
-                "usage": "Final comprehensive analysis combining all behavioral patterns"
+                "purpose": "Comprehensive behavioral analysis integrating results from other analytics functions (ALWAYS FINAL STEP)",
+                "inputs": ["user_id: str", "habit_id: str", "insight_type: str", "underperformance_analysis: dict", "epic_progress_analysis: dict", "interaction_analysis: dict", "mood_correlation_analysis: dict"],
+                "outputs": ["insights: list", "patterns: dict", "recommendations: list", "integrated_analysis: dict"],
+                "integration": "Accepts optional analysis results from step-1 analytics functions to prevent duplicate computation",
+                "usage": "Final comprehensive analysis combining all behavioral patterns and external analysis results"
             },
             {
                 "name": "recommend_mood_supporting_habits",
@@ -339,16 +375,36 @@ async def get_available_tools():
             {
                 "name": "final_habit_answer",
                 "category": "response_formatting",
-                "purpose": "Format standardized response with fixed output schema",
-                "inputs": ["intervention_type: str", "habit_plan: dict", "analysis: dict", "recommendations: list", "error_message: str"],
-                "outputs": ["FinalHabitAnswerOutput: Pydantic model"],
-                "usage": "Required final step - standardizes all responses for Master Manager",
+                "purpose": "Format standardized response with comprehensive analytics data and fixed output schema",
+                "inputs": [
+                    "intervention_type: str", 
+                    "habit_plan: dict", 
+                    "analysis_result: dict", 
+                    "recommendations: list", 
+                    "error_message: str",
+                    "insights: list",
+                    "patterns: dict", 
+                    "integrated_analysis: dict",
+                    "underperforming_habits: list",
+                    "epic_progress_data: dict",
+                    "habit_interactions: dict",
+                    "mood_correlations: dict",
+                    "daily_plan: dict",
+                    "progress_data: dict"
+                ],
+                "outputs": ["FinalHabitAnswerOutput: Comprehensive Pydantic model with all analytics"],
+                "usage": "Required final step - standardizes all responses with full analytics support for Master Manager",
+                "analytics_support": "Accepts and formats results from all analytics functions including generate_habit_insights",
                 "schema": {
                     "habit_plan": "HabitOutput (is_created, habit_id, plan_id)",
-                    "analysis": "Optional[Dict] - analytics results",
+                    "analysis": "Combined Dict with all analytics results", 
                     "recommendations": "List[str] - actionable suggestions",
                     "intervention_type": "str - habit_creation/habit_analysis/habit_modification/error",
-                    "error_type": "Optional[str] - error classification"
+                    "error_type": "Optional[str] - error classification",
+                    "insights": "List[str] - behavioral insights",
+                    "patterns": "Dict - behavioral patterns",
+                    "integrated_analysis": "Dict - cross-analysis results",
+                    "individual_analytics": "Separate fields for each analytics function result"
                 }
             }
         ],
@@ -374,10 +430,11 @@ async def get_available_tools():
             ]
         },
         "analytics_workflow": {
-            "pattern": "Unidirectional flow ending with generate_habit_insights",
+            "pattern": "Integrated flow where analysis results feed into generate_habit_insights",
             "step_1_tools": ["analyze_underperforming_habits", "analyze_lagging_epic_progress", "analyze_habit_interactions", "analyze_mood_habit_correlation"],
             "final_step_tool": "generate_habit_insights",
-            "rule": "LLM should always arrive at generate_habit_insights as the final analytical step"
+            "integration_method": "Pass analysis results as parameters to generate_habit_insights to prevent duplicate computation",
+            "rule": "LLM should pass relevant analysis outputs to generate_habit_insights for unified insights"
         },
         "crisis_adaptation": {
             "trigger_conditions": {

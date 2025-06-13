@@ -346,10 +346,20 @@ class HabitManagerBrain:
         
         Expected input from final_habit_answer tool (FinalHabitAnswerOutput):
         - habit_plan: Optional[HabitOutput] with is_created, habit_id, plan_id
-        - analysis: Optional[Dict[str, Any]] - analytics results
+        - analysis: Optional[Dict[str, Any]] - combined analytics results
         - recommendations: List[str] - actionable suggestions
         - intervention_type: str - habit_creation/habit_analysis/habit_modification/error
         - error_type: Optional[str] - error classification
+        - insights: Optional[List[str]] - behavioral insights
+        - patterns: Optional[Dict[str, Any]] - behavioral patterns
+        - integrated_analysis: Optional[Dict[str, Any]] - integrated analysis
+        - analysis_sources: Optional[Dict[str, Any]] - analysis sources
+        - underperforming_habits: Optional[List[Dict]] - underperformance data
+        - epic_progress_data: Optional[Dict] - epic progress data  
+        - habit_interactions: Optional[Dict] - interaction data
+        - mood_correlations: Optional[Dict] - mood correlation data
+        - daily_plan: Optional[Dict] - daily planning data
+        - progress_data: Optional[Dict] - progress tracking data
         """
         try:
             # Extract standardized response from final_habit_answer tool (FinalHabitAnswerOutput Pydantic model)
@@ -369,8 +379,36 @@ class HabitManagerBrain:
                         "plan_id": final_response.habit_plan.plan_id
                     }
                 
-                # Handle analysis data (Optional[Dict])
-                analysis_data = final_response.analysis if final_response.analysis else None
+                # Comprehensive analysis data combining all analytics results
+                analysis_data = {}
+                
+                # Include basic analysis if available
+                if final_response.analysis:
+                    analysis_data.update(final_response.analysis)
+                
+                # Include advanced analytics fields
+                if final_response.insights:
+                    analysis_data["insights"] = final_response.insights
+                if final_response.patterns:
+                    analysis_data["patterns"] = final_response.patterns
+                if final_response.integrated_analysis:
+                    analysis_data["integrated_analysis"] = final_response.integrated_analysis
+                if final_response.analysis_sources:
+                    analysis_data["analysis_sources"] = final_response.analysis_sources
+                
+                # Include individual analytics results
+                if final_response.underperforming_habits:
+                    analysis_data["underperforming_habits"] = final_response.underperforming_habits
+                if final_response.epic_progress_data:
+                    analysis_data["epic_progress_data"] = final_response.epic_progress_data
+                if final_response.habit_interactions:
+                    analysis_data["habit_interactions"] = final_response.habit_interactions
+                if final_response.mood_correlations:
+                    analysis_data["mood_correlations"] = final_response.mood_correlations
+                if final_response.daily_plan:
+                    analysis_data["daily_plan"] = final_response.daily_plan
+                if final_response.progress_data:
+                    analysis_data["progress_data"] = final_response.progress_data
                 
                 # Handle recommendations (List[str])
                 recommendations_data = final_response.recommendations if final_response.recommendations else []
@@ -378,7 +416,7 @@ class HabitManagerBrain:
                 return HabitManagerResponse(
                     success=success,
                     habit_plan=habit_plan_data,
-                    analysis=analysis_data,
+                    analysis=analysis_data if analysis_data else None,
                     metadata={
                         "is_error": not success,
                         "error_type": final_response.error_type,
@@ -386,7 +424,18 @@ class HabitManagerBrain:
                         "priority": request.priority,
                         "processing_method": "llm_powered",
                         "tools_used": llm_results.get("tools_used", []),
-                        "agent_type": llm_results.get("agent_type", "unknown")
+                        "agent_type": llm_results.get("agent_type", "unknown"),
+                        "analytics_included": {
+                            "insights": final_response.insights is not None,
+                            "patterns": final_response.patterns is not None,
+                            "integrated_analysis": final_response.integrated_analysis is not None,
+                            "underperforming_habits": final_response.underperforming_habits is not None,
+                            "epic_progress": final_response.epic_progress_data is not None,
+                            "habit_interactions": final_response.habit_interactions is not None,
+                            "mood_correlations": final_response.mood_correlations is not None,
+                            "daily_plan": final_response.daily_plan is not None,
+                            "progress_data": final_response.progress_data is not None
+                        }
                     },
                     recommendations=recommendations_data
                 )
