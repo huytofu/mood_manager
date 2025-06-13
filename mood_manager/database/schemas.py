@@ -193,28 +193,88 @@ class UserSessionDocument(BaseModel):
 
 # MOOD MANAGER SCHEMAS
 
-class MoodRecordDocument(BaseModel):
-    """Schema for mood_records collection."""
-    user_id: str = Field(..., description="User identifier", min_length=1)
-    date: str = Field(..., description="Date", regex=r"^[0-9]{4}-[0-9]{2}-[0-9]{2}$")
-    mood_score: int = Field(..., description="Daily mood score", ge=1, le=10)
-    is_crisis: Optional[bool] = Field(default=False, description="Whether this was a crisis day")
-    is_depressed: Optional[bool] = Field(default=False, description="Whether user felt depressed")
-    notes: Optional[str] = Field(None, description="Mood notes", max_length=1000)
-    recorded_at: str = Field(..., description="Recording timestamp ISO string")
-
-
 class DateRecordDocument(BaseModel):
-    """Schema for dates collection (shared with habit manager)."""
+    """
+    Schema for dates collection (shared with habit manager).
+    Consolidated daily records including mood data and habit tracking.
+    """
     user_id: str = Field(..., description="User identifier", min_length=1)
     date: str = Field(..., description="Date", regex=r"^[0-9]{4}-[0-9]{2}-[0-9]{2}$")
+    
+    # Habit-related fields (maintained for habit manager compatibility)
     habits_scheduled: Optional[List[str]] = Field(default_factory=list, description="Scheduled habit IDs")
     habits_completed: Optional[List[str]] = Field(default_factory=list, description="Completed habit IDs")
-    mood_score: Optional[int] = Field(None, description="Daily mood score", ge=1, le=10)
+    
+    # Mood-related fields (enhanced for mood manager)
+    mood_score: Optional[int] = Field(None, description="Daily overall mood score", ge=1, le=10)
     is_crisis: Optional[bool] = Field(default=False, description="Whether this was a crisis day")
     is_depressed: Optional[bool] = Field(default=False, description="Whether user felt depressed")
-    mood_notes: Optional[str] = Field(None, description="Mood notes")
+    mood_notes: Optional[str] = Field(None, description="Daily emotional diary/context notes", max_length=2000)
+    
+    # Metadata
     created_at: str = Field(..., description="Creation timestamp ISO string")
+    updated_at: Optional[str] = Field(None, description="Last update timestamp ISO string")
+
+    @field_validator('mood_notes')
+    def validate_mood_notes(cls, v):
+        if v is not None and len(v.strip()) == 0:
+            return None
+        return v
+
+
+class EmotionRecordDocument(BaseModel):
+    """
+    Schema for emotion_records collection.
+    Tracks specific emotions with granular detail and context.
+    """
+    user_id: str = Field(..., description="User identifier", min_length=1)
+    date: str = Field(..., description="Date", regex=r"^[0-9]{4}-[0-9]{2}-[0-9]{2}$")
+    emotion_type: str = Field(..., description="Type of emotion", min_length=1, max_length=50)
+    emotion_score: int = Field(..., description="Intensity of this specific emotion", ge=1, le=10)
+    emotion_notes: Optional[str] = Field(None, description="Context, triggers, environment for this emotion", max_length=1500)
+    
+    # Contextual information
+    triggers: Optional[List[str]] = Field(default_factory=list, description="Identified triggers for this emotion")
+    context: Optional[Dict[str, Any]] = Field(default_factory=dict, description="Environmental and activity context")
+    
+    # Metadata
+    created_at: str = Field(..., description="Creation timestamp ISO string")
+    updated_at: Optional[str] = Field(None, description="Last update timestamp ISO string")
+
+    @field_validator('emotion_type')
+    def validate_emotion_type(cls, v):
+        # Normalize emotion type to lowercase
+        normalized = v.lower().strip()
+        valid_emotions = [
+            "happiness", "joy", "contentment", "excitement", "euphoria",
+            "sadness", "melancholy", "grief", "despair", "sorrow",
+            "anger", "irritation", "rage", "frustration", "annoyance",
+            "fear", "anxiety", "panic", "worry", "nervousness",
+            "surprise", "amazement", "shock", "wonder", "confusion",
+            "disgust", "contempt", "revulsion", "aversion",
+            "love", "affection", "compassion", "empathy", "warmth",
+            "guilt", "shame", "embarrassment", "regret", "remorse",
+            "pride", "confidence", "accomplishment", "satisfaction",
+            "loneliness", "isolation", "emptiness", "disconnection"
+        ]
+        
+        if normalized not in valid_emotions:
+            # Allow custom emotions but warn - this could be expanded
+            pass
+        
+        return normalized
+
+    @field_validator('triggers')
+    def validate_triggers(cls, v):
+        if v is not None and len(v) > 10:  # Reasonable limit on number of triggers
+            raise ValueError("Too many triggers specified (max 10)")
+        return v
+
+    @field_validator('emotion_notes')
+    def validate_emotion_notes(cls, v):
+        if v is not None and len(v.strip()) == 0:
+            return None
+        return v
 
 
 # VALIDATION HELPERS
@@ -289,26 +349,49 @@ def validate_update_data(update_data: Dict, schema_class: BaseModel) -> Dict:
         raise ValueError(f"Update validation failed for {schema_class.__name__}: {e}")
 
 
-def validate_mood_data(mood_data: Dict) -> Dict:
+def validate_date_record_data(date_data: Dict) -> Dict:
     """
-    Special validation helper for mood recording with automatic defaults.
+    Validate date record data using DateRecordDocument schema.
     
     Args:
-        mood_data: Raw mood data dictionary
+        date_data: Raw date record data
         
     Returns:
-        Validated mood data with defaults applied
+        Validated and normalized date record data
+        
+    Raises:
+        ValueError: If validation fails
     """
     try:
-        # Add recording timestamp if not present
-        mood_data.setdefault("recorded_at", datetime.now().isoformat())
+        # Convert to Pydantic model for validation
+        date_record = DateRecordDocument(**date_data)
         
-        # Ensure boolean fields have proper defaults
-        mood_data.setdefault("is_crisis", False)
-        mood_data.setdefault("is_depressed", False)
-        
-        # Validate using MoodRecordDocument schema
-        return validate_and_convert_to_dict(mood_data, MoodRecordDocument)
+        # Return as dict with Pydantic serialization
+        return date_record.model_dump()
         
     except Exception as e:
-        raise ValueError(f"Mood data validation failed: {e}") 
+        raise ValueError(f"DateRecordDocument validation failed: {str(e)}")
+
+
+def validate_emotion_record_data(emotion_data: Dict) -> Dict:
+    """
+    Validate emotion record data using EmotionRecordDocument schema.
+    
+    Args:
+        emotion_data: Raw emotion record data
+        
+    Returns:
+        Validated and normalized emotion record data
+        
+    Raises:
+        ValueError: If validation fails
+    """
+    try:
+        # Convert to Pydantic model for validation
+        emotion_record = EmotionRecordDocument(**emotion_data)
+        
+        # Return as dict with Pydantic serialization
+        return emotion_record.model_dump()
+        
+    except Exception as e:
+        raise ValueError(f"EmotionRecordDocument validation failed: {str(e)}") 

@@ -1,6 +1,7 @@
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Union
 from pydantic import BaseModel, Field
 from langchain_core.tools import tool
+import json
 
 # Import router functions for direct calls
 from routers.cache_router import (
@@ -18,8 +19,12 @@ from routers.audio_router import (
 # Import mood recording utilities
 from utils.mood_recording_utils import (
     _record_daily_mood,
-    _get_mood_records,
-    _analyze_mood_patterns
+    _get_mood_stats,
+    _record_daily_mood_notes,
+    _record_daily_emotion,
+    _record_daily_emotion_notes,
+    _analyze_mood_trend,
+    _analyze_emotion_trend
 )
 # =============================================================================
 # TOOL SCHEMAS
@@ -86,6 +91,8 @@ class MoodAnalysisInput(BaseModel):
 
 class MoodHistoryInput(BaseModel):
     user_id: str = Field(..., description="User identifier")
+    start_date: Optional[str] = Field(default=None, description="Start date in YYYY-MM-DD format")
+    end_date: Optional[str] = Field(default=None, description="End date in YYYY-MM-DD format")
     limit: int = Field(default=50, description="Maximum number of mood records to retrieve", ge=1, le=200)
 
 # =============================================================================
@@ -555,80 +562,21 @@ def final_answer(
         error_type=error_type
     )
 
-@tool("record_mood", args_schema=MoodRecordingInput)
-async def record_mood(
-    user_id: str, 
-    date: str, 
-    mood_score: int, 
-    is_crisis: bool = False, 
-    is_depressed: bool = False, 
-    notes: Optional[str] = None
-) -> Dict[str, Any]:
-    """
-    Tool Purpose: Record daily mood rating with crisis/depression flags. This functionality was moved from habit manager to mood manager for proper ownership.
-    
-    Args:
-    - user_id (str): User identifier
-    - date (str): Date in YYYY-MM-DD format
-    - mood_score (int): Daily mood score 1-10
-    - is_crisis (bool): Whether user is in crisis/stress state
-    - is_depressed (bool): Whether user is in depressed state
-    - notes (Optional[str]): Optional mood notes
-    
-    Returns:
-    - Dict containing: success (bool), mood_record_id (str), mood_data (Dict), 
-      crisis_trigger (bool), correlation_trigger (bool), recommendations (List[str])
-    """
-    return await _record_daily_mood(user_id, date, mood_score, is_crisis, is_depressed, notes)
-
-@tool("analyze_mood_patterns", args_schema=MoodAnalysisInput)
-async def analyze_mood_patterns_tool(
-    user_id: str, 
-    time_period: str = "monthly",
-    start_date: Optional[str] = None,
-    end_date: Optional[str] = None
-) -> Dict[str, Any]:
-    """
-    Tool Purpose: Analyze mood patterns for insights and trends to support therapeutic interventions.
-    
-    Args:
-    - user_id (str): User identifier
-    - time_period (str): Analysis period: weekly, monthly, or custom
-    - start_date (Optional[str]): Start date for custom period
-    - end_date (Optional[str]): End date for custom period
-    
-    Returns:
-    - Dict containing: success (bool), analysis_period (str), total_records (int), 
-      average_mood (float), mood_trend (str), crisis_days (int), depressed_days (int),
-      low_mood_days (int), high_mood_days (int), mood_stability (str), recommendations (List[str])
-    """
-    return await _analyze_mood_patterns(user_id, time_period)
-
 @tool("get_user_mood_history", args_schema=MoodHistoryInput)
 async def get_user_mood_history(
     user_id: str, 
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
     limit: int = 50
 ) -> Dict[str, Any]:
     """
-    Tool Purpose: Retrieve mood history records for correlation analysis and context-aware therapeutic recommendations.
+    Tool Purpose: Retrieve mood history records for intelligent analysis and recommendations.
     
-    This tool allows the LLM to:
-    1. Retrieve recent mood history to understand user's emotional patterns
-    2. Correlate mood data with current user input for personalized interventions
-    3. Identify concerning trends that require immediate attention
-    4. Provide context-aware therapeutic recommendations based on historical data
-    
-    Args:
-    - user_id (str): User identifier
-    - limit (int): Maximum number of mood records to retrieve (1-200, default: 50)
-    
-    Returns:
-    - Dict containing:
-        - success (bool): Whether retrieval was successful
-        - mood_records (List[Dict]): List of mood records with date, score, crisis/depression flags, notes
-        - total_records (int): Total number of records found
-        - date_range (str): Date range of retrieved records
-        - error (Optional[str]): Error message if retrieval failed
+    This tool provides comprehensive mood data for correlation analysis:
+    - Fetches mood scores, crisis flags, depression markers
+    - Includes emotional diary notes for qualitative insights
+    - Returns chronological data for trend analysis
+    - Essential for generating evidence-based recommendations
     
     Use Cases:
     - Before generating recommendations, check recent mood patterns
@@ -637,7 +585,12 @@ async def get_user_mood_history(
     - Adjust intervention intensity based on mood history stability
     """
     try:
-        result = _get_mood_records(user_id=user_id, limit=limit)
+        result = await _get_mood_stats(
+            user_id=user_id, 
+            start_date=start_date, 
+            end_date=end_date, 
+            limit=limit
+        )
         return result
         
     except Exception as e:
@@ -648,4 +601,417 @@ async def get_user_mood_history(
             "total_records": 0,
             "date_range": "",
             "error": f"Failed to retrieve mood history: {str(e)}"
+        }
+
+# =============================================================================
+# ENHANCED MOOD AND EMOTION RECORDING TOOLS (Phase 1 & 2)
+# =============================================================================
+
+class MoodRecordingInput(BaseModel):
+    user_id: str = Field(..., description="User identifier")
+    date: str = Field(..., description="Date in YYYY-MM-DD format")
+    mood_score: Optional[int] = Field(default=None, ge=1, le=10, description="Optional daily mood score 1-10")
+    mood_notes: Optional[str] = Field(default=None, description="Optional emotional diary notes")
+    is_crisis: bool = Field(default=False, description="Whether user is in crisis/stress state")
+    is_depressed: bool = Field(default=False, description="Whether user is in depressed state")
+
+class MoodNotesInput(BaseModel):
+    user_id: str = Field(..., description="User identifier")
+    date: str = Field(..., description="Date in YYYY-MM-DD format")
+    mood_notes: str = Field(..., description="Emotional diary entry")
+
+class EmotionRecordingInput(BaseModel):
+    user_id: str = Field(..., description="User identifier")
+    date: str = Field(..., description="Date in YYYY-MM-DD format")
+    emotion_type: str = Field(..., description="Type of emotion (e.g., anxiety, joy, anger)")
+    emotion_score: int = Field(..., ge=1, le=10, description="Emotion intensity score 1-10")
+    triggers: Optional[List[str]] = Field(default=None, description="Optional list of triggers")
+    context: Optional[Dict[str, Any]] = Field(default=None, description="Optional context information")
+
+class EmotionNotesInput(BaseModel):
+    user_id: str = Field(..., description="User identifier")
+    date: str = Field(..., description="Date in YYYY-MM-DD format")
+    emotion_type: str = Field(..., description="Type of emotion")
+    emotion_notes: str = Field(..., description="Notes about this emotion")
+    triggers: Optional[List[str]] = Field(default=None, description="Optional list of triggers")
+    context: Optional[Dict[str, Any]] = Field(default=None, description="Optional context information")
+
+class MoodTrendAnalysisInput(BaseModel):
+    user_id: str = Field(..., description="User identifier")
+    time_period: str = Field(default="monthly", description="Analysis period: weekly or monthly")
+    include_note_analysis: bool = Field(default=True, description="Whether to analyze mood notes")
+
+class EmotionTrendAnalysisInput(BaseModel):
+    user_id: str = Field(..., description="User identifier")
+    emotions: Union[str, List[str]] = Field(..., description="Single emotion, list of emotions, or 'all'")
+    time_period: str = Field(default="monthly", description="Analysis period: weekly or monthly")
+    include_note_analysis: bool = Field(default=True, description="Whether to analyze emotion notes")
+
+@tool("record_daily_mood", args_schema=MoodRecordingInput)
+async def record_daily_mood_tool(
+    user_id: str,
+    date: str,
+    mood_score: int = None,
+    mood_notes: str = None,
+    is_crisis: bool = False,
+    is_depressed: bool = False
+) -> str:
+    """
+    Record daily mood with optional score and emotional diary notes.
+    Consolidated tool that combines mood score recording with emotional diary functionality.
+    
+    Args:
+        user_id: User identifier
+        date: Date in YYYY-MM-DD format
+        mood_score: Optional mood score 1-10
+        mood_notes: Optional emotional diary entry
+        is_crisis: Whether user is in crisis
+        is_depressed: Whether user is depressed
+        
+    Returns:
+        JSON string with recording result and recommendations
+    """
+    try:
+        result = await _record_daily_mood(
+            user_id=user_id,
+            date=date,
+            mood_score=mood_score,
+            mood_notes=mood_notes,
+            is_crisis=is_crisis,
+            is_depressed=is_depressed
+        )
+        
+        if result["success"]:
+            return json.dumps({
+                "status": "success",
+                "mood_record_id": result["mood_record_id"],
+                "date": result["date"],
+                "mood_score": result.get("mood_score"),
+                "mood_notes": result.get("mood_notes"),
+                "crisis_trigger": result["crisis_trigger"],
+                "correlation_trigger": result["correlation_trigger"],
+                "recommendations": result["recommendations"],
+                "tool_name": "record_daily_mood"
+            })
+        else:
+            return json.dumps({
+                "status": "error",
+                "error": result.get("error", "Unknown error"),
+                "tool_name": "record_daily_mood"
+            })
+            
+    except Exception as e:
+        return json.dumps({
+            "status": "error", 
+            "error": f"Mood recording failed: {str(e)}",
+            "tool_name": "record_daily_mood"
+        })
+
+@tool("record_daily_mood_notes", args_schema=MoodNotesInput)
+async def record_daily_mood_notes_tool(
+    user_id: str, 
+    date: str, 
+    mood_notes: str
+) -> Dict[str, Any]:
+    """
+    Tool Purpose: Record daily emotional diary notes - implementing your excellent emotional diary idea!
+    
+    This tool enables rich emotional journaling and self-reflection:
+    - Records detailed emotional experiences and thoughts
+    - Supports sentiment analysis and pattern recognition
+    - Integrates with mood scores for comprehensive tracking
+    - Enables therapeutic insights from qualitative data
+    
+    Args:
+    - user_id (str): User identifier
+    - date (str): Date in YYYY-MM-DD format
+    - mood_notes (str): Emotional diary entry
+    
+    Returns:
+    - Dict containing: success (bool), message (str), date (str), note_length (int)
+    """
+    try:
+        result = await _record_daily_mood_notes(
+            user_id=user_id,
+            date=date,
+            mood_notes=mood_notes
+        )
+        
+        if result["success"]:
+            return {
+                "success": True,
+                "message": result["message"],
+                "date": result["date"],
+                "note_length": result["note_length"],
+                "tool_name": "record_mood_diary_notes"
+            }
+        else:
+            return {
+                "success": False,
+                "error": result.get("error", "Failed to record mood notes"),
+                "tool_name": "record_mood_diary_notes"
+            }
+    except Exception as e:
+        return {
+            "success": False,
+            "error": str(e),
+            "tool_name": "record_mood_diary_notes"
+        }
+
+@tool("record_daily_emotion", args_schema=EmotionRecordingInput)
+async def record_daily_emotion_tool(
+    user_id: str, 
+    date: str, 
+    emotion_type: str, 
+    emotion_score: int,
+    triggers: Optional[List[str]] = None,
+    context: Optional[Dict[str, Any]] = None
+) -> Dict[str, Any]:
+    """
+    Tool Purpose: Record specific emotions with granular tracking and contextual information.
+    
+    Enables multi-dimensional emotional awareness:
+    - Tracks specific emotion types (anxiety, joy, anger, etc.)
+    - Records intensity scores for each emotion
+    - Captures triggers and environmental context
+    - Supports multiple emotions per day for comprehensive tracking
+    - Enables emotion-specific therapeutic interventions
+    
+    Args:
+    - user_id (str): User identifier
+    - date (str): Date in YYYY-MM-DD format
+    - emotion_type (str): Type of emotion (e.g., anxiety, joy, anger)
+    - emotion_score (int): Emotion intensity score 1-10
+    - triggers (Optional[List[str]]): Optional list of triggers
+    - context (Optional[Dict[str, Any]]): Optional context information
+    
+    Returns:
+    - Dict containing: success (bool), emotion_record_id (str), emotion_type (str), 
+      emotion_score (int), date (str), triggers (List[str]), context (Dict), recommendations (List[str])
+    """
+    try:
+        result = await _record_daily_emotion(
+            user_id=user_id,
+            date=date,
+            emotion_type=emotion_type,
+            emotion_score=emotion_score,
+            triggers=triggers or [],
+            context=context or {}
+        )
+        
+        if result["success"]:
+            return {
+                "success": True,
+                "emotion_record_id": result["emotion_record_id"],
+                "emotion_type": result["emotion_type"],
+                "emotion_score": result["emotion_score"],
+                "date": result["date"],
+                "triggers": result["triggers"],
+                "context": result["context"],
+                "recommendations": result["recommendations"],
+                "tool_name": "record_specific_emotion"
+            }
+        else:
+            return {
+                "success": False,
+                "error": result.get("error", "Failed to record emotion"),
+                "tool_name": "record_specific_emotion"
+            }
+    except Exception as e:
+        return {
+            "success": False,
+            "error": str(e),
+            "tool_name": "record_specific_emotion"
+        }
+
+@tool("record_daily_emotion_notes", args_schema=EmotionNotesInput)
+async def record_daily_emotion_notes_tool(
+    user_id: str, 
+    date: str, 
+    emotion_type: str, 
+    emotion_notes: str,
+    triggers: Optional[List[str]] = None,
+    context: Optional[Dict[str, Any]] = None
+) -> Dict[str, Any]:
+    """
+    Tool Purpose: Record detailed contextual notes for specific emotions with triggers and environmental factors.
+    
+    Enhances emotion tracking with rich qualitative data:
+    - Links specific situations to emotional responses
+    - Captures detailed triggers and environmental context
+    - Enables pattern recognition in emotional reactions
+    - Supports targeted therapeutic interventions
+    - Facilitates emotion-specific journaling and reflection
+    
+    Args:
+    - user_id (str): User identifier
+    - date (str): Date in YYYY-MM-DD format
+    - emotion_type (str): Type of emotion
+    - emotion_notes (str): Detailed notes about this emotion
+    - triggers (Optional[List[str]]): Optional list of triggers
+    - context (Optional[Dict[str, Any]]): Optional context information
+    
+    Returns:
+    - Dict containing: success (bool), message (str), emotion_type (str), date (str), note_length (int)
+    """
+    try:
+        result = await _record_daily_emotion_notes(
+            user_id=user_id,
+            date=date,
+            emotion_type=emotion_type,
+            emotion_notes=emotion_notes,
+            triggers=triggers,
+            context=context
+        )
+        
+        if result["success"]:
+            return {
+                "success": True,
+                "message": result["message"],
+                "emotion_type": result["emotion_type"],
+                "date": result["date"],
+                "note_length": result["note_length"],
+                "tool_name": "record_emotion_context_notes"
+            }
+        else:
+            return {
+                "success": False,
+                "error": result.get("error", "Failed to record emotion notes"),
+                "tool_name": "record_emotion_context_notes"
+            }
+    except Exception as e:
+        return {
+            "success": False,
+            "error": str(e),
+            "tool_name": "record_emotion_context_notes"
+        }
+
+@tool("analyze_mood_trends", args_schema=MoodTrendAnalysisInput)
+async def analyze_mood_trends_tool(
+    user_id: str, 
+    time_period: str = "monthly",
+    include_note_analysis: bool = True
+) -> Dict[str, Any]:
+    """
+    Tool Purpose: Enhanced mood trend analysis with sentiment analysis of diary notes and comprehensive insights.
+    
+    Provides sophisticated mood pattern analysis:
+    - Statistical analysis of mood scores and trends
+    - NLP sentiment analysis of emotional diary notes
+    - Integration of quantitative and qualitative insights
+    - Crisis pattern identification and early warning systems
+    - Therapeutic recommendations based on comprehensive data analysis
+    
+    Args:
+    - user_id (str): User identifier
+    - time_period (str): Analysis period (weekly or monthly)
+    - include_note_analysis (bool): Whether to analyze sentiment of mood notes
+    
+    Returns:
+    - Dict containing: success (bool), analysis_period (str), date_range (str), total_records (int),
+      average_mood (float), mood_trend (str), crisis_days (int), depressed_days (int), 
+      low_mood_days (int), high_mood_days (int), mood_stability (str), note_insights (List[str]), 
+      recommendations (List[str])
+    """
+    try:
+        result = await _analyze_mood_trend(
+            user_id=user_id,
+            time_period=time_period,
+            include_note_analysis=include_note_analysis
+        )
+        
+        if result["success"]:
+            return {
+                "success": True,
+                "analysis_period": result["analysis_period"],
+                "date_range": result["date_range"],
+                "total_records": result["total_records"],
+                "average_mood": result["average_mood"],
+                "mood_trend": result["mood_trend"],
+                "crisis_days": result["crisis_days"],
+                "depressed_days": result["depressed_days"],
+                "low_mood_days": result["low_mood_days"],
+                "high_mood_days": result["high_mood_days"],
+                "mood_stability": result["mood_stability"],
+                "note_insights": result["note_insights"],
+                "recommendations": result["recommendations"],
+                "tool_name": "analyze_mood_trends_enhanced"
+            }
+        else:
+            return {
+                "success": False,
+                "error": result.get("error", "Failed to analyze mood trends"),
+                "tool_name": "analyze_mood_trends_enhanced"
+            }
+    except Exception as e:
+        return {
+            "success": False,
+            "error": str(e),
+            "tool_name": "analyze_mood_trends_enhanced"
+        }
+
+@tool("analyze_emotion_trends", args_schema=EmotionTrendAnalysisInput)
+async def analyze_emotion_trends_tool(
+    user_id: str, 
+    emotions: Union[str, List[str]], 
+    time_period: str = "monthly",
+    include_note_analysis: bool = True
+) -> Dict[str, Any]:
+    """
+    Tool Purpose: Advanced emotion trend analysis supporting your vision for sophisticated emotional intelligence.
+    
+    Supports multiple analysis modes:
+    - Single emotion: Deep dive into specific emotion patterns and triggers
+    - Multiple emotions: Correlation analysis between different emotional states
+    - All emotions: Comprehensive emotional landscape and interaction analysis
+    - Multi-emotion correlation detection for therapeutic insights
+    - Trigger pattern recognition and intervention recommendations
+    
+    Args:
+    - user_id (str): User identifier
+    - emotions (Union[str, List[str]]): Single emotion, list of emotions, or "all"
+    - time_period (str): Analysis period (weekly or monthly)
+    - include_note_analysis (bool): Whether to analyze emotion notes
+    
+    Returns:
+    - Dict containing: success (bool), analysis_type (str), emotion_type (str), date_range (str),
+      total_records (int), average_intensity (float), intensity_trend (str), emotion_breakdown (Dict),
+      emotion_correlations (Dict), common_triggers (List[Dict]), note_insights (List[str]), 
+      recommendations (List[str])
+    """
+    try:
+        result = await _analyze_emotion_trend(
+            user_id=user_id,
+            emotions=emotions,
+            time_period=time_period,
+            include_note_analysis=include_note_analysis
+        )
+        
+        if result["success"]:
+            return {
+                "success": True,
+                "analysis_type": result.get("analysis_type"),
+                "emotion_type": result.get("emotion_type"),
+                "date_range": result.get("date_range"),
+                "total_records": result.get("total_records", 0),
+                "average_intensity": result.get("average_intensity"),
+                "intensity_trend": result.get("intensity_trend"),
+                "emotion_breakdown": result.get("emotion_breakdown"),
+                "emotion_correlations": result.get("emotion_correlations"),
+                "common_triggers": result.get("common_triggers", []),
+                "note_insights": result.get("note_insights", []),
+                "recommendations": result.get("recommendations", []),
+                "tool_name": "analyze_emotion_patterns"
+            }
+        else:
+            return {
+                "success": False,
+                "error": result.get("error", "Failed to analyze emotion patterns"),
+                "tool_name": "analyze_emotion_patterns"
+            }
+    except Exception as e:
+        return {
+            "success": False,
+            "error": str(e),
+            "tool_name": "analyze_emotion_patterns"
         }

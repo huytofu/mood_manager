@@ -42,10 +42,14 @@ from .mood_manager_tools import (
     call_cache_endpoint,
     generate_recommendations,
     handle_crisis,
-    record_mood,
-    analyze_mood_patterns_tool,
+    final_answer,
     get_user_mood_history,
-    final_answer
+    record_daily_mood_tool,
+    record_daily_mood_notes_tool,
+    record_daily_emotion_tool,
+    record_daily_emotion_notes_tool,
+    analyze_mood_trends_tool,
+    analyze_emotion_trends_tool
 )
 from .mood_manager_prompts import MOOD_MANAGER_SYSTEM_PROMPT, get_user_prompt_template, generate_tools_documentation
 
@@ -113,18 +117,22 @@ class MoodManagerBrain:
         else:
             self.hf_token = os.getenv("HF_TOKEN")
         
-        # Available tools for the LLM to use (emotional analysis now handled by Master Manager)
+        # Phase 1 & 2 Enhanced Tools (Your emotional diary & multi-emotion tracking idea!)
         self.tools = [
-            plan_intervention, 
+            plan_intervention,
             prepare_audio_params,
             call_audio_endpoint,
             call_cache_endpoint,
             generate_recommendations,
             handle_crisis,
-            record_mood,
-            analyze_mood_patterns_tool,
+            final_answer,
             get_user_mood_history,
-            final_answer
+            record_daily_mood_tool,
+            record_daily_mood_notes_tool,
+            record_daily_emotion_tool,
+            record_daily_emotion_notes_tool,
+            analyze_mood_trends_tool,
+            analyze_emotion_trends_tool
         ]
         
         # Generate dynamic tools documentation
