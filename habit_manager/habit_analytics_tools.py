@@ -15,9 +15,12 @@ from utils.habit_analytics import (
     _get_habit_insights_from_notes,
     _get_mood_based_recommendations,
     _get_all_user_completions,
-    _get_mood_records,
+    _get_mood_stats,
     _calculate_basic_habit_trends,
     _calculate_basic_epic_progress,
+    _calculate_correlation_with_mood_scores,
+    _calculate_correlation_with_flags,
+    _generate_correlation_recommendations,
 )
 
 from utils.habit_core import (
@@ -419,7 +422,7 @@ async def analyze_mood_habit_correlation(
     """
     try:
         # Get mood records and habit completions
-        mood_records = await _get_mood_records(user_id, time_period)
+        mood_records = await _get_mood_stats(user_id, time_period)
         habit_completions = await _get_all_user_completions(user_id, time_period)
         
         if not mood_records:
@@ -795,21 +798,6 @@ def _interpret_habit_correlation(correlation: float, habit1_type: str, habit2_ty
     return interpretation
 
 # Import additional utility functions from analytics
-async def _calculate_correlation_with_mood_scores(habit_records: List[Dict], mood_records: List[Dict]) -> float:
-    """Calculate correlation between habit performance and mood scores."""
-    from utils.habit_analytics import _calculate_correlation_with_mood_scores as analytics_func
-    return await analytics_func(habit_records, mood_records)
-
-async def _calculate_correlation_with_flags(habit_records: List[Dict], mood_records: List[Dict], flag: str) -> float:
-    """Calculate correlation between habit performance and mood flags."""
-    from utils.habit_analytics import _calculate_correlation_with_flags as analytics_func
-    return await analytics_func(habit_records, mood_records, flag)
-
-async def _generate_correlation_recommendations(correlations: Dict, insights: List[str]) -> List[str]:
-    """Generate recommendations based on correlation analysis."""
-    from utils.habit_analytics import _generate_correlation_recommendations as analytics_func
-    return await analytics_func(correlations, insights)
-
 async def _generate_completion_insights(patterns: Dict) -> List[str]:
     """Generate insights about completion patterns."""
     insights = []

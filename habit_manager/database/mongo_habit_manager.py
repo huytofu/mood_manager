@@ -1,17 +1,18 @@
 """
 MongoDB Habit Manager
 ====================
-Manages 5 collections for habit tracking:
+Manages 4 collections for habit tracking:
 1. micro_habits - Individual atomic habits with scheduling and scoring
 2. epic_habits - Overarching goals containing micro habits
-3. dates - Daily tracking records with mood and crisis flags
+3. dates - Daily tracking records with mood and crisis flags (shared with mood manager)
 4. habit_completions - Individual habit completion records
-5. mood_records - Daily mood tracking with correlation data
+
+Note: Mood data is now stored in the shared 'dates' collection, eliminating the separate mood_records collection
 """
 
 from pymongo import MongoClient
 from datetime import datetime, timedelta
-from typing import Optional, Dict, List
+from typing import Optional, Dict, List, Any
 import os
 
 # Import Pydantic validation schemas
@@ -39,9 +40,8 @@ class MongoHabitManager:
         self.db = None
         self.micro_habits = None
         self.epic_habits = None
-        self.dates = None
+        self.dates = None  # Shared with mood manager
         self.habit_completions = None
-        self.mood_records = None
         self.connected = False
         
         self._connect()
@@ -65,7 +65,6 @@ class MongoHabitManager:
             self.epic_habits = self.db["epic_habits"]
             self.dates = self.db["dates"]
             self.habit_completions = self.db["habit_completions"]
-            self.mood_records = self.db["mood_records"]
             
             # Create indexes for better performance
             self._create_indexes()
@@ -120,11 +119,6 @@ class MongoHabitManager:
             safe_create_index(self.habit_completions, [("user_id", 1), ("habit_id", 1), ("date", 1)])
             safe_create_index(self.habit_completions, [("habit_id", 1), ("date", 1)])
             safe_create_index(self.habit_completions, "recorded_at")
-            
-            # Mood records indexes
-            safe_create_index(self.mood_records, [("user_id", 1), ("date", 1)])
-            safe_create_index(self.mood_records, [("is_crisis", 1), ("is_depressed", 1)])
-            safe_create_index(self.mood_records, "recorded_at")
             
         except Exception as e:
             print(f"Warning: Error during index creation: {e}")
@@ -202,22 +196,6 @@ class MongoHabitManager:
                 }
             }
             
-            # MOOD RECORDS Schema Validation
-            mood_schema = {
-                "$jsonSchema": {
-                    "bsonType": "object",
-                    "required": ["user_id", "date", "mood_score"],
-                    "properties": {
-                        "user_id": {"bsonType": "string", "minLength": 1},
-                        "date": {"bsonType": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"},
-                        "mood_score": {"bsonType": "int", "minimum": 1, "maximum": 10},
-                        "is_crisis": {"bsonType": "bool"},
-                        "is_depressed": {"bsonType": "bool"},
-                        "notes": {"bsonType": ["string", "null"], "maxLength": 1000}
-                    }
-                }
-            }
-            
             # DATES Schema Validation
             dates_schema = {
                 "$jsonSchema": {
@@ -241,7 +219,6 @@ class MongoHabitManager:
                 ("micro_habits", micro_habits_schema),
                 ("epic_habits", epic_habits_schema),
                 ("habit_completions", completions_schema),
-                ("mood_records", mood_schema),
                 ("dates", dates_schema)
             ]
             
@@ -483,15 +460,63 @@ class MongoHabitManager:
         
         return self.dates.find_one({"user_id": user_id, "date": date})
     
-    def get_user_date_range(self, user_id: str, start_date: str, end_date: str) -> List[Dict]:
-        """Get date records for user within date range."""
+    def get_mood_stats(self, user_id: str, start_date: str = None, end_date: str = None) -> Dict[str, Any]:
+        """Get mood statistics from date records within a date range."""
+        if not self.is_connected():
+            return {}
+        
+        try:
+            # If no dates provided, default to last 30 days
+            if not end_date:
+                end_date = datetime.now().strftime("%Y-%m-%d")
+            if not start_date:
+                start_date = (datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d")
+            
+            # Get date records in the range
+            date_records = self.get_date_records_range(user_id, start_date, end_date)
+            
+            # Filter records with mood data
+            mood_records = [r for r in date_records if r.get("mood_score") is not None]
+            
+            if not mood_records:
+                return {"error": "No mood data found"}
+            
+            mood_scores = [r["mood_score"] for r in mood_records]
+            
+            return {
+                "total_records": len(mood_records),
+                "average_mood": sum(mood_scores) / len(mood_scores),
+                "min_mood": min(mood_scores),
+                "max_mood": max(mood_scores),
+                "crisis_days": len([r for r in mood_records if r.get("is_crisis", False)]),
+                "depressed_days": len([r for r in mood_records if r.get("is_depressed", False)]),
+                "mood_records": mood_records,  # Include the actual records
+                "start_date": start_date,
+                "end_date": end_date,
+            }
+        except Exception as e:
+            print(f"Error getting mood stats: {e}")
+            return {}
+
+    def get_date_records_range(self, user_id: str, start_date: str = None, end_date: str = None, limit: int = 50) -> List[Dict]:
+        """Get date records within a range with optional limit."""
         if not self.is_connected():
             return []
         
-        return list(self.dates.find({
-            "user_id": user_id,
-            "date": {"$gte": start_date, "$lte": end_date}
-        }).sort("date", 1))
+        try:
+            query = {"user_id": user_id}
+            
+            if start_date and end_date:
+                query["date"] = {"$gte": start_date, "$lte": end_date}
+            elif start_date:
+                query["date"] = {"$gte": start_date}
+            elif end_date:
+                query["date"] = {"$lte": end_date}
+            
+            return list(self.dates.find(query).sort("date", -1).limit(limit))
+        except Exception as e:
+            print(f"Error getting date records range: {e}")
+            return []
     
     # HABIT COMPLETIONS COLLECTION
     def record_habit_completion(self, completion_data: Dict) -> bool:
@@ -579,17 +604,6 @@ class MongoHabitManager:
         )
         return True
     
-    def get_mood_records(self, user_id: str, start_date: str = None, end_date: str = None) -> List[Dict]:
-        """Get mood records for user within date range."""
-        if not self.is_connected():
-            return []
-        
-        query = {"user_id": user_id}
-        if start_date and end_date:
-            query["date"] = {"$gte": start_date, "$lte": end_date}
-        
-        return list(self.mood_records.find(query).sort("date", 1))
-    
     # ANALYTICS AND UTILITIES
     def get_habits_by_category(self, user_id: str, category: str) -> List[Dict]:
         """Get habits by category."""
@@ -619,10 +633,7 @@ class MongoHabitManager:
             # Only clean up completion records older than cutoff
             self.habit_completions.delete_many({"date": {"$lt": cutoff_date}})
             
-            # Clean up mood records older than cutoff
-            self.mood_records.delete_many({"date": {"$lt": cutoff_date}})
-            
-            # Clean up date records older than cutoff
+            # Clean up date records older than cutoff (shared with mood manager)
             self.dates.delete_many({"date": {"$lt": cutoff_date}})
             
             print(f"Cleaned up records older than {cutoff_date}")
@@ -638,8 +649,7 @@ class MongoHabitManager:
             "micro_habits": self.micro_habits.count_documents({}),
             "epic_habits": self.epic_habits.count_documents({}),
             "dates": self.dates.count_documents({}),
-            "habit_completions": self.habit_completions.count_documents({}),
-            "mood_records": self.mood_records.count_documents({})
+            "habit_completions": self.habit_completions.count_documents({})
         }
 
 # Global instance

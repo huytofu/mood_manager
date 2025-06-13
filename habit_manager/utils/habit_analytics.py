@@ -594,10 +594,24 @@ async def _get_all_user_completions(user_id: str, time_period: str) -> List[Dict
     except Exception:
         return []
 
-async def _get_mood_records(user_id: str, time_period: str) -> List[Dict[str, Any]]:
+async def _get_mood_stats(user_id: str, time_period: str) -> List[Dict[str, Any]]:
     """Get mood records for a user within a time period."""
     try:
-        return mongo_habit_manager.get_mood_records(user_id, time_period)
+        # Calculate date range based on time period
+        end_date = datetime.now().strftime("%Y-%m-%d")
+        if time_period == "weekly":
+            start_date = (datetime.now() - timedelta(weeks=1)).strftime("%Y-%m-%d")
+        elif time_period == "monthly":
+            start_date = (datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d")
+        else:
+            # Default to monthly if unrecognized period
+            start_date = (datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d")
+        
+        # Use modernized get_mood_stats function that gets data from dates collection
+        mood_stats = mongo_habit_manager.get_mood_stats(user_id, start_date, end_date)
+        
+        # Return the mood_records from the stats, or empty list if no data
+        return mood_stats.get("mood_records", [])
     except Exception:
         return []
 
@@ -637,5 +651,140 @@ async def _get_mood_based_recommendations(mood_score: int, is_crisis: bool, is_d
             "Share positive momentum with others",
             "Plan for maintaining habits during lower mood periods"
         ])
+    
+    return recommendations
+
+async def _calculate_correlation_with_mood_scores(habit_records: List[Dict], mood_records: List[Dict]) -> float:
+    """Calculate correlation between habit completion scores and mood scores."""
+    try:
+        # Create date-indexed dictionaries for easier matching
+        mood_by_date = {record.get("date"): record.get("mood_score", 5) for record in mood_records}
+        habit_by_date = {}
+        
+        # Group habit records by date
+        for record in habit_records:
+            date = record.get("date")
+            if date not in habit_by_date:
+                habit_by_date[date] = []
+            habit_by_date[date].append(record.get("completion_score", 0))
+        
+        # Calculate average habit score per date
+        habit_avg_by_date = {
+            date: sum(scores) / len(scores) if scores else 0 
+            for date, scores in habit_by_date.items()
+        }
+        
+        # Find common dates
+        common_dates = set(mood_by_date.keys()) & set(habit_avg_by_date.keys())
+        
+        if len(common_dates) < 3:  # Need minimum data points
+            return 0.0
+        
+        # Create paired data
+        paired_data = [(habit_avg_by_date[date], mood_by_date[date]) for date in common_dates]
+        
+        # Calculate Pearson correlation
+        n = len(paired_data)
+        sum_x = sum(x for x, y in paired_data)
+        sum_y = sum(y for x, y in paired_data)
+        sum_x2 = sum(x*x for x, y in paired_data)
+        sum_y2 = sum(y*y for x, y in paired_data)
+        sum_xy = sum(x*y for x, y in paired_data)
+        
+        numerator = n * sum_xy - sum_x * sum_y
+        denominator = ((n * sum_x2 - sum_x**2) * (n * sum_y2 - sum_y**2))**0.5
+        
+        if denominator == 0:
+            return 0.0
+        
+        correlation = numerator / denominator
+        return max(-1.0, min(1.0, correlation))  # Clamp to [-1, 1]
+        
+    except Exception as e:
+        print(f"Error calculating mood score correlation: {e}")
+        return 0.0
+
+async def _calculate_correlation_with_flags(habit_records: List[Dict], mood_records: List[Dict], flag: str) -> float:
+    """Calculate correlation between habit completion and mood flags (is_crisis, is_depressed)."""
+    try:
+        # Create date-indexed dictionaries
+        mood_by_date = {record.get("date"): record.get(flag, False) for record in mood_records}
+        habit_by_date = {}
+        
+        # Group habit records by date
+        for record in habit_records:
+            date = record.get("date")
+            if date not in habit_by_date:
+                habit_by_date[date] = []
+            habit_by_date[date].append(record.get("completion_score", 0))
+        
+        # Calculate average habit score per date
+        habit_avg_by_date = {
+            date: sum(scores) / len(scores) if scores else 0 
+            for date, scores in habit_by_date.items()
+        }
+        
+        # Find common dates
+        common_dates = set(mood_by_date.keys()) & set(habit_avg_by_date.keys())
+        
+        if len(common_dates) < 3:  # Need minimum data points
+            return 0.0
+        
+        # Create paired data (habit score, flag as 0/1)
+        paired_data = [(habit_avg_by_date[date], 1 if mood_by_date[date] else 0) for date in common_dates]
+        
+        # Calculate correlation
+        n = len(paired_data)
+        sum_x = sum(x for x, y in paired_data)
+        sum_y = sum(y for x, y in paired_data)
+        sum_x2 = sum(x*x for x, y in paired_data)
+        sum_y2 = sum(y*y for x, y in paired_data)
+        sum_xy = sum(x*y for x, y in paired_data)
+        
+        numerator = n * sum_xy - sum_x * sum_y
+        denominator = ((n * sum_x2 - sum_x**2) * (n * sum_y2 - sum_y**2))**0.5
+        
+        if denominator == 0:
+            return 0.0
+        
+        correlation = numerator / denominator
+        return max(-1.0, min(1.0, correlation))  # Clamp to [-1, 1]
+        
+    except Exception as e:
+        print(f"Error calculating flag correlation: {e}")
+        return 0.0
+
+async def _generate_correlation_recommendations(correlations: Dict, insights: List[str]) -> List[str]:
+    """Generate recommendations based on correlation analysis."""
+    recommendations = []
+    
+    strong_positive_mood = []
+    strong_negative_mood = []
+    crisis_affected = []
+    
+    for habit_id, data in correlations.items():
+        habit_name = data.get("habit_name", "Unknown")
+        mood_corr = data.get("mood_score_correlation", 0)
+        crisis_corr = data.get("crisis_correlation", 0)
+        
+        if mood_corr > 0.3:
+            strong_positive_mood.append(habit_name)
+        elif mood_corr < -0.3:
+            strong_negative_mood.append(habit_name)
+        
+        if crisis_corr < -0.3:
+            crisis_affected.append(habit_name)
+    
+    if strong_positive_mood:
+        recommendations.append(f"Schedule {', '.join(strong_positive_mood[:3])} during good mood periods for better success")
+    
+    if strong_negative_mood:
+        recommendations.append(f"Make {', '.join(strong_negative_mood[:3])} easier or more flexible during low mood periods")
+    
+    if crisis_affected:
+        recommendations.append(f"Have backup plans for {', '.join(crisis_affected[:3])} during crisis periods")
+    
+    if not any([strong_positive_mood, strong_negative_mood, crisis_affected]):
+        recommendations.append("Habits appear to be mood-independent - maintain consistent routine regardless of mood")
     
     return recommendations 
