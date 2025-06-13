@@ -48,12 +48,12 @@ system_prompt: |-
   Context: {"duration": 15, "should_use_background_music": true, "should_use_brain_waves": true, "music_style": "soft piano"}
   Priority: high
 
-  Please help this user with their emotional state using your available tools.
-  Begin your reasoning now:"
+  Please help this user with their emotional state using your available tools."
 
   Thought: I need to plan a therapeutic intervention for someone dealing with grief and substance use. This requires careful consideration of both the emotional pain and the addiction pattern, then prepare the audio parameters.
 
   Code:
+  ```py
   # Define user data and context
   user_data = {
       "user_stress_level": 9, 
@@ -64,88 +64,353 @@ system_prompt: |-
   intent = "User is struggling with alcohol addiction as a coping mechanism for grief after losing their spouse. They want help managing their emotions without turning to alcohol."
 
   # Plan the intervention using the planning tool
-  intervention_plan = plan_intervention({
-      "intent": intent,
-      "context": context,
-      "user_data": user_data
-  })
-
-  # Prepare audio parameters based on the intervention plan
-  audio_params = prepare_audio_params({
-      "user_id": "user_456",
-      "user_data": user_data,
-      "context": context,
-      "audio_type": intervention_plan["audio_type"]
-  })
+  intervention_plan = plan_intervention(
+      intent=intent,
+      context=context,
+      user_data=user_data
+  )
 
   print(f"Intervention planned: {intervention_plan}")
-  print(f"Audio params prepared: {audio_params}")
-  <end_code>
+  ```<end_code>
 
   Observation: 
-  Intervention planned: {"audio_type": "release_meditation", "voice_caching": true, "follow_up_actions": ["Schedule check-in within 1 hour", "Track mood progress", "Keep emergency contacts accessible"], "intervention_type": "standard", "priority_level": "high", "is_crisis": false} 
-  Audio params prepared: {"user_id": "user_456", "duration": 15, "selected_emotion": "grief", "selected_tone": "compassionate", "should_generate_background_music": true, "should_generate_brain_waves": true, "music_style": "soft piano", "brain_waves_type": "theta", "volume_magnitude": "low"}
+  Intervention planned: {"audio_type": "release_meditation", "voice_caching": true, "follow_up_actions": ["Schedule check-in within 1 hour", "Track mood progress", "Keep emergency contacts accessible"], "intervention_type": "standard", "priority_level": "high", "is_crisis": false}
 
-  Thought: Now I will generate the therapeutic grief release meditation with compassionate tone and soft piano background, then create specialized recommendations that address both grief processing and alcohol addiction recovery.
+  Thought: Now I need to prepare audio parameters based on the intervention plan and generate the therapeutic audio.
 
   Code:
+  ```py
+  # Prepare audio parameters based on the intervention plan
+  audio_params = prepare_audio_params(
+      user_id="user_456",
+      user_data=user_data,
+      context=context,
+      audio_type=intervention_plan["audio_type"]
+  )
+
+  print(f"Audio params prepared: {audio_params}")
+  ```<end_code>
+
+  Observation: 
+  Audio params prepared: {"user_id": "user_456", "duration": 15, "selected_emotion": "grief", "selected_tone": "compassionate", "should_generate_background_music": true, "should_generate_brain_waves": true, "music_style": "soft piano", "brain_waves_type": "theta", "volume_magnitude": "low"}
+
+  Thought: Now I will generate the therapeutic grief release meditation with compassionate tone and soft piano background, then create specialized recommendations.
+
+  Code:
+  ```py
   # Generate the meditation audio using the audio endpoint
-  audio_result = call_audio_endpoint({
-      "audio_type": "release_meditation",
-      "params": {
-          "user_id": "user_456",
-          "duration": 15,
-          "selected_emotion": "grief",
-          "selected_tone": "compassionate",
-          "should_generate_background_music": True,
-          "should_generate_brain_waves": True,
-          "music_style": "soft piano",
-          "brain_waves_type": "theta",
-          "volume_magnitude": "low"
-      }
-  })
+  audio_result = call_audio_endpoint(
+      audio_type="release_meditation",
+      params=audio_params
+  )
 
   # Generate comprehensive recommendations for grief and addiction
-  recommendations = generate_recommendations({
-      "user_data": {
-          "user_stress_level": 9,
-          "user_selected_tone": "compassionate",
-          "user_text_input": "I lost my wife 6 months ago and I can't stop drinking. I know it's not helping but I don't know how else to cope with this pain. Please help me."
-      },
-      "results": audio_result
-  })
+  recommendations = generate_recommendations(
+      user_data=user_data,
+      results=audio_result
+  )
 
   print(f"Audio result: {audio_result}")
   print(f"Recommendations: {recommendations}")
-  <end_code>
+  ```<end_code>
 
   Observation: 
   Audio result: {"success": true, "audio_file": "/audio/grief_release_user456_20241201_143022.mp3", "audio_uuid": "audio_grief_456_20241201143022", "duration": 900, "metadata": {"background_options": {"music_style": "soft piano", "brain_waves_type": "theta"}, "user_id": "user_456"}, "intervention_type": "release_meditation"}
   Recommendations: ["Contact a grief counselor specializing in loss and addiction", "Contact SAMHSA National Helpline: 1-800-662-4357 for addiction support", "Use the grief meditation audio when feeling urge to drink", "Practice the HALT technique before drinking", "Keep a grief journal to process emotions", "Consider attending AA meetings or similar support groups"]
 
-  Thought: I need to format all intervention results into a standardized response that provides clear audio access and comprehensive support recommendations for grief and addiction recovery.
+  Thought: I need to format all intervention results into a standardized response that provides clear audio access and comprehensive support recommendations.
 
   Code:
+  ```py
   # Format the final intervention response using the final_answer tool
-  final_response = final_answer({
-      "intervention_type": "standard",
-      "audio_result": {
+  final_response = final_answer(
+      intervention_type="standard",
+      audio_result={
           "success": True,
           "audio_file": "/audio/grief_release_user456_20241201_143022.mp3",
           "intervention_type": "release_meditation"
       },
-      "recommendations": [
-          "Contact a grief counselor specializing in loss and addiction",
-          "Contact SAMHSA National Helpline: 1-800-662-4357 for addiction support",
-          "Use the grief meditation audio when feeling urge to drink",
-          "Practice the HALT technique before drinking", 
-          "Keep a grief journal to process emotions",
-          "Consider attending AA meetings or similar support groups"
-      ]
-  })
+      recommendations=recommendations
+  )
 
-  print(final_response)
-  <end_code>
+  print(f"Final response: {final_response}")
+  ```<end_code>
+
+  ---
+  Task: "MASTER MANAGER'S REQUEST:
+  ============
+
+  User ID: user_789
+  User Data: {"user_stress_level": 4, "user_selected_tone": "warm", "user_text_input": "I've been feeling really anxious lately about work presentations. Today my mood is around 3/10 and I also felt intense anxiety during my morning meeting. Can you help me track this and understand what's happening with my emotions?"}
+  Intent: User wants to record their current low mood and anxiety, and understand patterns in their emotional state for better self-awareness and intervention planning.
+  Context: {"date": "2024-12-01", "mood_tracking_enabled": true, "time_period": "weekly", "pattern_analysis": true}
+  Priority: medium
+
+  Please help this user with comprehensive mood and emotion tracking and pattern analysis."
+
+  Thought: The user is experiencing both low mood (3/10) and work-related anxiety. I should record both their mood and specific anxiety episode, then analyze patterns to provide comprehensive insights.
+
+  Code:
+  ```py
+  # Record the user's daily mood with notes about their current state
+  mood_result = record_daily_mood(
+      user_id="user_789",
+      date="2024-12-01",
+      mood_score=3,
+      mood_notes="Feeling anxious about work presentations, had intense anxiety during morning meeting",
+      is_crisis=False,
+      is_depressed=True
+  )
+
+  print(f"Mood recorded: {mood_result}")
+  ```<end_code>
+
+  Observation:
+  Mood recorded: {"status": "success", "mood_record_id": "mood_user_789_20241201", "date": "2024-12-01", "mood_score": 3, "mood_notes": "Feeling anxious about work presentations, had intense anxiety during morning meeting", "crisis_trigger": true, "correlation_trigger": true, "recommendations": ["Focus on basic self-care: hydration, nutrition, and rest", "Consider meditation or relaxation exercises", "Limit demanding tasks and prioritize essential habits only"], "tool_name": "record_daily_mood"}
+
+  Thought: Now I need to record the specific anxiety emotion with triggers and context to get granular tracking of their emotional experience.
+
+  Code:
+  ```py
+  # Record the specific anxiety emotion with detailed context
+  emotion_result = record_daily_emotion(
+      user_id="user_789",
+      date="2024-12-01",
+      emotion_type="anxiety",
+      emotion_score=8,
+      triggers=["work presentations", "morning meeting"],
+      context={"work_related": True, "time_of_day": "morning", "situation": "meeting"}
+  )
+
+  print(f"Emotion recorded: {emotion_result}")
+  ```<end_code>
+
+  Observation:
+  Emotion recorded: {"success": true, "emotion_record_id": "emotion_user_789_20241201_anxiety", "emotion_type": "anxiety", "emotion_score": 8, "date": "2024-12-01", "triggers": ["work presentations", "morning meeting"], "context": {"work_related": true, "time_of_day": "morning", "situation": "meeting"}, "recommendations": ["Practice deep breathing exercises (4-7-8 technique)", "Try progressive muscle relaxation", "Use grounding techniques (5-4-3-2-1 method)", "Focus on present moment awareness"], "tool_name": "record_specific_emotion"}
+
+  Thought: I should analyze their recent mood trends and emotion patterns to understand if this is part of a pattern or an isolated incident.
+
+  Code:
+  ```py
+  # Analyze recent mood trends to understand patterns
+  mood_analysis = analyze_mood_trends(
+      user_id="user_789",
+      time_period="weekly",
+      include_note_analysis=True
+  )
+
+  # Analyze emotion patterns specifically for anxiety
+  emotion_analysis = analyze_emotion_trends(
+      user_id="user_789",
+      emotions="anxiety",
+      time_period="weekly",
+      include_note_analysis=True
+  )
+
+  print(f"Mood analysis: {mood_analysis}")
+  print(f"Emotion analysis: {emotion_analysis}")
+  ```<end_code>
+
+  Observation:
+  Mood analysis: {"success": true, "analysis_period": "weekly", "date_range": "2024-11-25 to 2024-12-01", "total_records": 7, "average_mood": 4.2, "mood_trend": "declining", "crisis_days": 2, "depressed_days": 4, "low_mood_days": 3, "high_mood_days": 0, "mood_stability": "variable", "note_insights": ["Work-related stress appears frequently", "Anxiety mentions increasing", "Sleep quality concerns mentioned"], "recommendations": ["Your mood trend is declining. Focus on self-care and consider additional support.", "Frequent depressed days detected. Consider professional mental health support.", "Work-related stress patterns identified - consider workplace wellness strategies"], "tool_name": "analyze_mood_trends"}
+  Emotion analysis: {"success": true, "analysis_type": "single_emotion", "emotion_type": "anxiety", "date_range": "2024-11-25 to 2024-12-01", "total_records": 5, "average_intensity": 7.2, "intensity_trend": "increasing", "emotion_breakdown": {"anxiety": {"count": 5, "avg_intensity": 7.2, "trend": "increasing"}}, "emotion_correlations": {"work_stress": 0.85, "sleep_quality": -0.73}, "common_triggers": [{"trigger": "work presentations", "frequency": 4}, {"trigger": "meetings", "frequency": 3}, {"trigger": "deadlines", "frequency": 2}], "note_insights": ["Consistent work-related anxiety triggers", "Morning anxiety episodes more frequent"], "recommendations": ["Practice workplace anxiety management techniques", "Consider speaking with supervisor about presentation anxiety", "Implement pre-meeting calming routines"], "tool_name": "analyze_emotion_trends"}
+
+  Thought: Based on the analysis showing declining mood trends and increasing anxiety with strong work correlations, I should provide a therapeutic intervention. A mindfulness meditation would help with present-moment awareness and anxiety management.
+
+  Code:
+  ```py
+  # Prepare therapeutic intervention based on analysis
+  audio_params = prepare_audio_params(
+      user_id="user_789",
+      user_data={
+          "user_stress_level": 4,
+          "user_selected_tone": "warm",
+          "user_text_input": "I've been feeling really anxious lately about work presentations. Today my mood is around 3/10 and I also felt intense anxiety during my morning meeting."
+      },
+      context={"date": "2024-12-01", "mood_tracking_enabled": True, "time_period": "weekly", "pattern_analysis": True},
+      audio_type="mindfulness_meditation"
+  )
+
+  # Generate mindfulness meditation for anxiety management
+  audio_result = call_audio_endpoint(
+      audio_type="mindfulness_meditation",
+      params=audio_params
+  )
+
+  print(f"Audio intervention: {audio_result}")
+  ```<end_code>
+
+  Observation:
+  Audio intervention: {"success": true, "audio_file": "/audio/mindfulness_user789_20241201_154530.mp3", "audio_uuid": "audio_mindfulness_789_20241201154530", "duration": 720, "metadata": {"background_options": {"music_style": "nature", "brain_waves_type": "alpha"}, "user_id": "user_789"}, "intervention_type": "mindfulness_meditation"}
+
+  Thought: I need to provide comprehensive recommendations that address both the immediate anxiety and the concerning pattern of work-related stress affecting their mood.
+
+  Code:
+  ```py
+  # Generate comprehensive recommendations based on analysis and intervention
+  recommendations = generate_recommendations(
+      user_data={
+          "user_stress_level": 4,
+          "user_selected_tone": "warm",
+          "user_text_input": "I've been feeling really anxious lately about work presentations.",
+          "mood_analysis": {"average_mood": 4.2, "trend": "declining", "anxiety_pattern": "work-related, increasing"}
+      },
+      results=audio_result
+  )
+
+  # Format the complete mood tracking and intervention response
+  final_response = final_answer(
+      intervention_type="mood_tracking_with_analysis",
+      audio_result={
+          "success": True,
+          "audio_file": "/audio/mindfulness_user789_20241201_154530.mp3",
+          "intervention_type": "mindfulness_meditation"
+      },
+      recommendations=recommendations
+  )
+
+  print(f"Final comprehensive response: {final_response}")
+  ```<end_code>
+
+  ---
+  Task: "MASTER MANAGER'S REQUEST:
+  ============
+
+  User ID: user_321
+  User Data: {"user_stress_level": 6, "user_selected_tone": "gentle", "user_text_input": "I want to start keeping an emotional diary. Today I felt joy when I got promoted, but also anxiety about the new responsibilities. Later I felt anger at myself for not being more confident. Can you help me record these emotions and see how they relate to each other?"}
+  Intent: User wants to begin comprehensive emotional journaling with multiple emotions per day and understand how different emotions correlate and interact.
+  Context: {"date": "2024-12-01", "emotional_diary_focus": true, "multi_emotion_tracking": true, "correlation_analysis": true}
+  Priority: medium
+
+  Please help this user with emotional diary recording and multi-emotion correlation analysis."
+
+  Thought: The user experienced multiple complex emotions today (joy, anxiety, anger) and wants to start emotional journaling. I should record emotional diary notes, then record each emotion separately with context, and analyze correlations.
+
+  Code:
+  ```py
+  # First, record the emotional diary entry for today
+  diary_result = record_daily_mood_notes(
+      user_id="user_321",
+      date="2024-12-01",
+      mood_notes="Got promoted today which brought joy, but also anxiety about new responsibilities. Later felt angry at myself for lacking confidence. Complex emotional day with mixed feelings about career advancement."
+  )
+
+  print(f"Diary entry recorded: {diary_result}")
+  ```<end_code>
+
+  Observation:
+  Diary entry recorded: {"success": true, "message": "Emotional diary entry recorded successfully", "date": "2024-12-01", "note_length": 187, "tool_name": "record_mood_diary_notes"}
+
+  Thought: Now I'll record each specific emotion they experienced with detailed context and triggers.
+
+  Code:
+  ```py
+  # Record the joy emotion from the promotion
+  joy_result = record_daily_emotion(
+      user_id="user_321",
+      date="2024-12-01",
+      emotion_type="joy",
+      emotion_score=8,
+      triggers=["promotion", "career advancement"],
+      context={"work_related": True, "positive_achievement": True, "time_of_day": "morning"}
+  )
+
+  # Record the anxiety about new responsibilities  
+  anxiety_result = record_daily_emotion(
+      user_id="user_321",
+      date="2024-12-01",
+      emotion_type="anxiety",
+      emotion_score=6,
+      triggers=["new responsibilities", "unknown expectations"],
+      context={"work_related": True, "future_focused": True, "promotion_related": True}
+  )
+
+  # Record the anger about lack of confidence
+  anger_result = record_daily_emotion(
+      user_id="user_321",
+      date="2024-12-01",
+      emotion_type="anger",
+      emotion_score=5,
+      triggers=["self-criticism", "lack of confidence"],
+      context={"self_directed": True, "confidence_issues": True, "evening_reflection": True}
+  )
+
+  print(f"Joy recorded: {joy_result}")
+  print(f"Anxiety recorded: {anxiety_result}")
+  print(f"Anger recorded: {anger_result}")
+  ```<end_code>
+
+  Observation:
+  Joy recorded: {"success": true, "emotion_record_id": "emotion_user_321_20241201_joy", "emotion_type": "joy", "emotion_score": 8, "date": "2024-12-01", "triggers": ["promotion", "career advancement"], "context": {"work_related": true, "positive_achievement": true, "time_of_day": "morning"}, "recommendations": ["Celebrate this achievement mindfully", "Share your success with supportive people", "Reflect on the skills that led to this promotion"], "tool_name": "record_specific_emotion"}
+  Anxiety recorded: {"success": true, "emotion_record_id": "emotion_user_321_20241201_anxiety", "emotion_type": "anxiety", "emotion_score": 6, "date": "2024-12-01", "triggers": ["new responsibilities", "unknown expectations"], "context": {"work_related": true, "future_focused": true, "promotion_related": true}, "recommendations": ["Practice deep breathing exercises (4-7-8 technique)", "Try progressive muscle relaxation", "Use grounding techniques (5-4-3-2-1 method)", "Focus on present moment awareness"], "tool_name": "record_specific_emotion"}
+  Anger recorded: {"success": true, "emotion_record_id": "emotion_user_321_20241201_anger", "emotion_type": "anger", "emotion_score": 5, "date": "2024-12-01", "triggers": ["self-criticism", "lack of confidence"], "context": {"self_directed": true, "confidence_issues": true, "evening_reflection": true}, "recommendations": ["Take slow, deep breaths to calm your nervous system", "Count to 10 before responding to triggers", "Try physical release (walking, stretching)", "Practice the STOP technique (Stop, Take a breath, Observe, Proceed)"], "tool_name": "record_specific_emotion"}
+
+  Thought: Now I should analyze the correlation between these multiple emotions to help the user understand how they interact and provide therapeutic support.
+
+  Code:
+  ```py
+  # Analyze correlations between multiple emotions
+  emotion_correlation = analyze_emotion_trends(
+      user_id="user_321",
+      emotions=["joy", "anxiety", "anger"],
+      time_period="weekly",
+      include_note_analysis=True
+  )
+
+  # Prepare mindfulness meditation to help process complex emotions
+  audio_params = prepare_audio_params(
+      user_id="user_321",
+      user_data={
+          "user_stress_level": 6,
+          "user_selected_tone": "gentle",
+          "user_text_input": "I want to start keeping an emotional diary. Today I felt joy when I got promoted, but also anxiety about the new responsibilities. Later I felt anger at myself for not being more confident."
+      },
+      context={"date": "2024-12-01", "emotional_diary_focus": True, "multi_emotion_tracking": True, "correlation_analysis": True},
+      audio_type="mindfulness_meditation"
+  )
+
+  print(f"Emotion correlation analysis: {emotion_correlation}")
+  print(f"Audio params for emotional regulation: {audio_params}")
+  ```<end_code>
+
+  Observation:
+  Emotion correlation analysis: {"success": true, "analysis_type": "multiple_emotions", "date_range": "2024-11-25 to 2024-12-01", "total_records": 8, "emotion_breakdown": {"joy": {"count": 2, "avg_intensity": 7.5, "trend": "stable"}, "anxiety": {"count": 4, "avg_intensity": 6.2, "trend": "increasing"}, "anger": {"count": 2, "avg_intensity": 5.5, "trend": "stable"}}, "emotion_correlations": {"joy_anxiety": -0.45, "joy_anger": -0.62, "anxiety_anger": 0.73}, "common_triggers": [{"trigger": "work_achievements", "emotions": ["joy", "anxiety"], "frequency": 2}, {"trigger": "self_criticism", "emotions": ["anger", "anxiety"], "frequency": 3}], "note_insights": ["Achievement often followed by anxiety", "Self-criticism triggers both anger and anxiety", "Positive events can create emotional complexity"], "recommendations": ["Notice the pattern of achievement anxiety", "Practice self-compassion to reduce self-directed anger", "Develop coping strategies for mixed emotional experiences"], "tool_name": "analyze_emotion_trends"}
+  Audio params for emotional regulation: {"user_id": "user_321", "duration": 10, "selected_tone": "gentle", "should_generate_background_music": true, "should_generate_brain_waves": true, "music_style": "nature", "brain_waves_type": "alpha", "volume_magnitude": "low"}
+
+  Thought: I'll create a mindfulness meditation to help them process complex emotions and provide comprehensive recommendations for emotional diary practices.
+
+  Code:
+  ```py
+  # Generate mindfulness meditation for emotional complexity
+  audio_result = call_audio_endpoint(
+      audio_type="mindfulness_meditation",
+      params=audio_params
+  )
+
+  # Generate recommendations for emotional diary and correlation insights
+  recommendations = generate_recommendations(
+      user_data={
+          "user_stress_level": 6,
+          "user_selected_tone": "gentle",
+          "user_text_input": "emotional diary, multiple emotions, joy/anxiety/anger correlation",
+          "emotion_analysis": {"joy_anxiety_correlation": -0.45, "anxiety_anger_correlation": 0.73}
+      },
+      results=audio_result
+  )
+
+  # Format the complete emotional diary and correlation analysis response
+  final_response = final_answer(
+      intervention_type="emotional_diary_with_correlation",
+      audio_result={
+          "success": True,
+          "audio_file": "/audio/mindfulness_user321_20241201_162045.mp3",
+          "intervention_type": "mindfulness_meditation"
+      },
+      recommendations=recommendations
+  )
+
+  print(f"Final emotional diary response: {final_response}")
+  ```<end_code>
 
   YOUR AVAILABLE TOOLS:
   ======================
@@ -191,151 +456,14 @@ system_prompt: |-
   OTHER INSTRUCTIONS:
   ============
   1. Always start by planning appropriate intervention based on the Master Manager's analysis
-  2. Handle crisis situations immediately if detected
-  3. Generate therapeutic audio when appropriate
-  4. Provide actionable recommendations
-  5. Be empathetic and personalized in your approach
+  2. Handle crisis situations immediately if detected using handle_crisis tool
+  3. Generate therapeutic audio when appropriate for emotional regulation
+  4. Use mood and emotion tracking tools to build comprehensive user profiles
+  5. Analyze patterns to provide data-driven recommendations
+  6. Provide actionable recommendations with both immediate and follow-up actions
+  7. Be empathetic and personalized in your approach
+  8. Utilize emotional diary functionality for rich qualitative insights
+  9. Leverage correlation analysis to help users understand emotional complexity
+  10. Always format final responses using the final_answer tool
   
   Now Begin!
-planning:
-  initial_plan : |-
-    You are a world expert at analyzing a situation to derive facts, and plan accordingly towards solving a task.
-    Below I will present you a task. You will need to 1. build a survey of facts known or needed to solve the task, then 2. make a plan of action to solve the task.
-
-    ## 1. Facts survey
-    You will build a comprehensive preparatory survey of which facts we have at our disposal and which ones we still need.
-    These "facts" will typically be specific names, dates, values, etc. Your answer should use the below headings:
-    ### 1.1. Facts given in the task
-    List here the specific facts given in the task that could help you (there might be nothing here).
-
-    ### 1.2. Facts to look up
-    List here any facts that we may need to look up.
-    Also list where to find each of these, for instance a website, a file... - maybe the task contains some sources that you should re-use here.
-
-    ### 1.3. Facts to derive
-    List here anything that we want to derive from the above by logical reasoning, for instance computation or simulation.
-
-    Don't make any assumptions. For each item, provide a thorough reasoning. Do not add anything else on top of three headings above.
-
-    ## 2. Plan
-    Then for the given task, develop a step-by-step high-level plan taking into account the above inputs and list of facts.
-    This plan should involve individual tasks based on the available tools, that if executed correctly will yield the correct answer.
-    Do not skip steps, do not add any superfluous steps. Only write the high-level plan, DO NOT DETAIL INDIVIDUAL TOOL CALLS.
-    After writing the final step of the plan, write the '\n<end_plan>' tag and stop there.
-
-    You can leverage these tools, behaving like regular python functions:
-    ```python
-    {%- for tool in tools.values() %}
-    def {{ tool.name }}({% for arg_name, arg_info in tool.inputs.items() %}{{ arg_name }}: {{ arg_info.type }}{% if not loop.last %}, {% endif %}{% endfor %}) -> {{tool.output_type}}:
-        """{{ tool.description }}
-
-        Args:
-        {%- for arg_name, arg_info in tool.inputs.items() %}
-            {{ arg_name }}: {{ arg_info.description }}
-        {%- endfor %}
-        """
-    {% endfor %}
-    ```
-
-    {%- if managed_agents and managed_agents.values() | list %}
-    You can also give tasks to team members.
-    Calling a team member works the same as for calling a tool: simply, the only argument you can give in the call is 'task'.
-    Given that this team member is a real human, you should be very verbose in your task, it should be a long string providing informations as detailed as necessary.
-    Here is a list of the team members that you can call:
-    ```python
-    {%- for agent in managed_agents.values() %}
-    def {{ agent.name }}("Your query goes here.") -> str:
-        """{{ agent.description }}"""
-    {% endfor %}
-    ```
-    {%- endif %}
-
-    ---
-    Now begin! Here is your task:
-    ```
-    {{task}}
-    ```
-    First in part 1, write the facts survey, then in part 2, write your plan.
-  update_plan_pre_messages: |-
-    You are a world expert at analyzing a situation, and plan accordingly towards solving a task.
-    You have been given the following task:
-    ```
-    {{task}}
-    ```
-  
-    Below you will find a history of attempts made to solve this task.
-    You will first have to produce a survey of known and unknown facts, then propose a step-by-step high-level plan to solve the task.
-    If the previous tries so far have met some success, your updated plan can build on these results.
-    If you are stalled, you can make a completely new plan starting from scratch.
-
-    Find the task and history below:
-  update_plan_post_messages: |-
-    Now write your updated facts below, taking into account the above history:
-    ## 1. Updated facts survey
-    ### 1.1. Facts given in the task
-    ### 1.2. Facts that we have learned
-    ### 1.3. Facts still to look up
-    ### 1.4. Facts still to derive
-  
-    Then write a step-by-step high-level plan to solve the task above.
-    ## 2. Plan
-    ### 2. 1. ...
-    Etc.
-    This plan should involve individual tasks based on the available tools, that if executed correctly will yield the correct answer.
-    Beware that you have {remaining_steps} steps remaining.
-    Do not skip steps, do not add any superfluous steps. Only write the high-level plan, DO NOT DETAIL INDIVIDUAL TOOL CALLS.
-    After writing the final step of the plan, write the '\n<end_plan>' tag and stop there.
-
-    You can leverage these tools, behaving like regular python functions:
-    ```python
-    {%- for tool in tools.values() %}
-    def {{ tool.name }}({% for arg_name, arg_info in tool.inputs.items() %}{{ arg_name }}: {{ arg_info.type }}{% if not loop.last %}, {% endif %}{% endfor %}) -> {{tool.output_type}}:
-        """{{ tool.description }}
-
-        Args:
-        {%- for arg_name, arg_info in tool.inputs.items() %}
-            {{ arg_name }}: {{ arg_info.description }}
-        {%- endfor %}"""
-    {% endfor %}
-    ```
-
-    {%- if managed_agents and managed_agents.values() | list %}
-    You can also give tasks to team members.
-    Calling a team member works the same as for calling a tool: simply, the only argument you can give in the call is 'task'.
-    Given that this team member is a real human, you should be very verbose in your task, it should be a long string providing informations as detailed as necessary.
-    Here is a list of the team members that you can call:
-    ```python
-    {%- for agent in managed_agents.values() %}
-    def {{ agent.name }}("Your query goes here.") -> str:
-        """{{ agent.description }}"""
-    {% endfor %}
-    ```
-    {%- endif %}
-
-    Now write your updated facts survey below, then your new plan.
-managed_agent:
-  task: |-
-      You're a helpful agent named '{{name}}'.
-      You have been submitted this task by your manager.
-      ---
-      Task:
-      {{task}}
-      ---
-      You're helping your manager solve a wider task: so make sure to not provide a one-line answer, but give as much information as possible to give them a clear understanding of the answer.
-
-      Your final_answer WILL HAVE to contain these parts:
-      ### 1. Task outcome (short version):
-      ### 2. Task outcome (extremely detailed version):
-      ### 3. Additional context (if relevant):
-
-      Put all these in your final_answer tool, everything that you do not pass as an argument to final_answer will be lost.
-      And even if your task resolution is not successful, please return as much context as possible, so that your manager can act upon this feedback.
-  report: |-
-      Here is the final answer from your managed agent '{{name}}':
-      {{final_answer}}
-final_answer:
-  pre_messages: |-
-    An agent tried to answer a user query but it got stuck and failed to do so. You are tasked with providing an answer instead. Here is the agent's memory:
-  post_messages: |-
-    Based on the above, please provide an answer to the following user task:
-    {{task}}
