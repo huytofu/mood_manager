@@ -1,0 +1,19 @@
+Analyze daily mood diary entries for overall mood patterns and insights. Respond with valid JSON only.
+
+DAILY MOOD ENTRIES:
+{notes_text}
+
+Analyze for emotional patterns, triggers, coping strategies, and overall mood progression. Return JSON with:
+{
+  "patterns": ["emotional pattern1", "behavioral pattern2"],
+  "triggers": {"positive": ["trigger1"], "negative": ["trigger2"]},
+  "mood_insights": "overall daily mood progression and correlation description",
+  "key_learnings": ["insight1", "insight2"],
+  "recommendations": ["action1", "action2"],
+  "progress_assessment": "improvement/decline/stable with description",
+  "emotional_themes": ["theme1", "theme2"],
+  "coping_strategies_observed": ["strategy1", "strategy2"],
+  "confidence_score": 8
+}
+
+Focus on actionable therapeutic insights from daily mood content and overall emotional well-being patterns. 

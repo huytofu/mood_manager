@@ -1,0 +1,17 @@
+Analyze habit notes for "{habit_name}" ({habit_type} habit) over {days} days. Respond with valid JSON only.
+
+NOTES:
+{notes_text}
+
+Analyze for patterns, triggers, mood correlations, and progress. Return JSON with:
+{
+  "patterns": ["pattern1", "pattern2"],
+  "triggers": {"positive": ["trigger1"], "negative": ["trigger2"]},
+  "mood_insights": "mood correlation description",
+  "key_learnings": ["learning1", "learning2"],
+  "recommendations": ["action1", "action2"],
+  "progress_assessment": "improvement/decline/stable description",
+  "confidence_score": 7
+}
+
+Focus on actionable insights from the note content. 

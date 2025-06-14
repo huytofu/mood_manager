@@ -357,7 +357,22 @@ async def _analyze_notes_with_llm(notes_content: List[str], habit_id: str, days:
         # Prepare the prompt for LLM analysis
         notes_text = "\n".join(notes_content)
         
-        analysis_prompt = f"""Analyze habit notes for "{habit_name}" ({habit_type} habit) over {days} days. Respond with valid JSON only.
+        # Load prompt template from file
+        try:
+            import os
+            prompt_file_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "prompts", "habit_notes_analysis.txt")
+            with open(prompt_file_path, 'r', encoding='utf-8') as f:
+                prompt_template = f.read()
+            
+            analysis_prompt = prompt_template.format(
+                habit_name=habit_name,
+                habit_type=habit_type,
+                days=days,
+                notes_text=notes_text
+            )
+        except Exception as e:
+            # Fallback to original prompt if file loading fails
+            analysis_prompt = f"""Analyze habit notes for "{habit_name}" ({habit_type} habit) over {days} days. Respond with valid JSON only.
 
 NOTES:
 {notes_text}

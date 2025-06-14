@@ -463,7 +463,7 @@ async def _analyze_mood_trend(
     if include_note_analysis:
         notes = [r.get("mood_notes", "") for r in mood_records if r.get("mood_notes")]
         if notes:
-            note_insights = await _analyze_notes_sentiment(notes)
+            note_insights = await _analyze_notes_sentiment(notes, "mood_trend")
     
     return {
         "success": True,
@@ -581,7 +581,7 @@ async def _analyze_single_emotion(
     if include_note_analysis:
         notes = [r.get("emotion_notes", "") for r in emotion_records if r.get("emotion_notes")]
         if notes:
-            note_insights = await _analyze_notes_sentiment(notes)
+            note_insights = await _analyze_notes_sentiment(notes, "single_emotion")
     
     return {
         "success": True,
@@ -736,13 +736,13 @@ async def _calculate_emotion_correlation(emotion1_records: List[Dict], emotion2_
     return overlap / total_unique_dates if total_unique_dates > 0 else 0
 
 
-async def _analyze_notes_sentiment(notes: List[str]) -> List[str]:
+async def _analyze_notes_sentiment(notes: List[str], analysis_context: str = "mood_trend") -> List[str]:
     """Advanced LLM-based analysis of mood/emotion notes for deep insights."""
     if not notes:
         return ["No notes available for analysis"]
     
     # Enhanced LLM Analysis similar to habit manager approach
-    llm_insights = await _analyze_mood_notes_with_llm(notes)
+    llm_insights = await _analyze_mood_notes_with_llm(notes, analysis_context)
     
     # Fallback to basic analysis if LLM fails
     if "error" in llm_insights:
@@ -771,13 +771,28 @@ async def _analyze_notes_sentiment(notes: List[str]) -> List[str]:
     return insights if insights else await _basic_sentiment_analysis(notes)
 
 
-async def _analyze_mood_notes_with_llm(notes: List[str]) -> Dict[str, Any]:
+async def _analyze_mood_notes_with_llm(notes: List[str], analysis_context: str = "mood_trend") -> Dict[str, Any]:
     """Use LLM to analyze mood/emotion notes for deeper insights."""
     try:
         # Prepare notes content
         notes_text = "\n".join([f"Entry {i+1}: {note}" for i, note in enumerate(notes)])
         
-        analysis_prompt = f"""Analyze mood and emotion diary entries for patterns and insights. Respond with valid JSON only.
+        # Load appropriate prompt template based on context
+        try:
+            import os
+            if analysis_context == "single_emotion":
+                prompt_file = "emotion_analysis.txt"
+            else:  # Default to mood_trend
+                prompt_file = "mood_trend_analysis.txt"
+            
+            prompt_file_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "prompts", prompt_file)
+            with open(prompt_file_path, 'r', encoding='utf-8') as f:
+                prompt_template = f.read()
+            
+            analysis_prompt = prompt_template.format(notes_text=notes_text)
+        except Exception as e:
+            # Fallback to original prompt if file loading fails
+            analysis_prompt = f"""Analyze mood and emotion diary entries for patterns and insights. Respond with valid JSON only.
 
 DIARY ENTRIES:
 {notes_text}
@@ -796,7 +811,7 @@ Analyze for emotional patterns, triggers, coping strategies, and progress indica
 }}
 
 Focus on actionable therapeutic insights from emotional content."""
-        
+
         # Import Hugging Face client if available
         try:
             from huggingface_hub import AsyncInferenceClient

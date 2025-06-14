@@ -1,0 +1,19 @@
+Analyze specific emotion diary entries for targeted emotional insights. Respond with valid JSON only.
+
+EMOTION-SPECIFIC ENTRIES:
+{notes_text}
+
+Analyze for specific emotional patterns, triggers, intensity variations, and targeted coping strategies. Return JSON with:
+{
+  "patterns": ["specific emotional pattern1", "intensity pattern2"],
+  "triggers": {"positive": ["trigger1"], "negative": ["trigger2"]},
+  "mood_insights": "specific emotion intensity and progression description",
+  "key_learnings": ["emotion-specific insight1", "trigger insight2"],
+  "recommendations": ["targeted action1", "emotion-specific strategy2"],
+  "progress_assessment": "improvement/decline/stable with emotion-specific description",
+  "emotional_themes": ["emotion-focused theme1", "intensity theme2"],
+  "coping_strategies_observed": ["emotion-specific strategy1", "targeted technique2"],
+  "confidence_score": 8
+}
+
+Focus on actionable insights specific to this emotion type, intensity management, and targeted therapeutic strategies. 
